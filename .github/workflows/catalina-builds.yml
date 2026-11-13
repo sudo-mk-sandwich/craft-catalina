@@ -1,0 +1,186 @@
+name: Catalina builds (manual)
+
+# Builds upstream Craft apps for Intel macOS 10.15+ and stores each DMG as a build artifact.
+# This repository holds no app source: for every app the workflow checks out storytold/<app>,
+# lowers the minimum macOS version and applies patches/<app>.patch if that file exists.
+# Manual start only. It does NOT create a public release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: "Apps to build: one or more repo names separated by commas (e.g. photocraft, wordcraft) or 'all' (the 16 apps without craftanything)"
+        required: true
+        default: "photocraft"
+      ref:
+        description: "Upstream tag or branch to build (empty = latest v* tag of each app). Only sensible when building a single app."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - name: Build the app list
+        id: m
+        env:
+          INPUT_APPS: ${{ inputs.apps }}
+        run: |
+          # Repo names under github.com/storytold/. The name of the Craft Anything repo is a guess:
+          # check it and change "craftanything" here if it differs.
+          ALL="photocraft vectorcraft filmcraft lightcraft pdfcraft effectcraft anicraft designcraft figcraft texturecraft materialcraft soundcraft wordcraft deckcraft cadcraft gridcraft"
+          KNOWN="$ALL craftanything"
+          SEL="$(printf '%s' "$INPUT_APPS" | tr ',;' '  ' | tr 'A-Z' 'a-z')"
+          if [ -z "$(printf '%s' "$SEL" | tr -d ' ')" ]; then
+            echo "::error::No app given" >&2
+            exit 1
+          fi
+          case " $SEL " in *" all "*) SEL="$ALL" ;; esac
+          for a in $SEL; do
+            case " $KNOWN " in
+              *" $a "*) ;;
+              *) echo "::error::Unknown app: $a" >&2; exit 1 ;;
+            esac
+          done
+          LIST="$(printf '%s\n' $SEL | sort -u)"
+          MATRIX="$(printf '%s\n' "$LIST" | jq -R -s -c 'split("\n") | map(select(length > 0)) | {app: .}')"
+          echo "$MATRIX"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: macos-15
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out this repository (patches)
+        uses: actions/checkout@v4
+        with:
+          path: fork
+
+      - name: Check out upstream ${{ matrix.app }}
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/${{ matrix.app }}
+          path: src
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check out translations
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/craft-i18n
+          path: craft-i18n
+
+      - name: Select upstream version
+        working-directory: src
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          APP: ${{ matrix.app }}
+        run: |
+          REF="$INPUT_REF"
+          if [ -z "$REF" ]; then
+            REF="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+          fi
+          if [ -z "$REF" ]; then
+            echo "::error::No v* tag in storytold/$APP. Start again with an explicit 'ref'." >&2
+            exit 1
+          fi
+          echo "Building $APP at upstream ref: $REF"
+          git checkout --detach "$REF"
+          echo "UPSTREAM_REF=$REF" >> "$GITHUB_ENV"
+          git log -1 --oneline
+
+      - name: Lower minimum macOS version to 10.15
+        working-directory: src
+        run: |
+          test -f packaging/macos/package.sh || { echo "::error::packaging/macos/package.sh not found"; exit 1; }
+          test -f packaging/macos/Info.plist.in || { echo "::error::packaging/macos/Info.plist.in not found"; exit 1; }
+          perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
+          perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' packaging/macos/Info.plist.in
+          grep -n 'MACOSX_DEPLOYMENT_TARGET' packaging/macos/package.sh
+          grep -n -A1 'LSMinimumSystemVersion' packaging/macos/Info.plist.in
+          # Fails if the lines look different in this app (or if upstream changed them to something else).
+          grep -q 'MACOSX_DEPLOYMENT_TARGET=10.15' packaging/macos/package.sh || { echo "::error::MACOSX_DEPLOYMENT_TARGET is not 10.15 after the change"; exit 1; }
+          grep -A1 'LSMinimumSystemVersion' packaging/macos/Info.plist.in | grep -q '<string>10.15</string>' || { echo "::error::LSMinimumSystemVersion is not 10.15 after the change"; exit 1; }
+
+      - name: Apply patches/${{ matrix.app }}.patch (if present)
+        working-directory: src
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          PATCH="$GITHUB_WORKSPACE/fork/patches/$APP.patch"
+          if [ -f "$PATCH" ]; then
+            git apply --3way --verbose "$PATCH"
+          else
+            echo "No patch for $APP, building with the version change only."
+          fi
+
+      - name: Add Intel target
+        run: rustup target add x86_64-apple-darwin
+
+      - name: Build and package (x86_64, ad-hoc signed)
+        working-directory: src
+        env:
+          CRAFT_I18N_DIR: ${{ github.workspace }}/craft-i18n
+        run: ./packaging/macos/package.sh --arch x86_64
+
+      - name: Verify minimum system version
+        working-directory: src
+        run: |
+          APP_BUNDLE="$(find . -type d -name '*.app' -path '*macos-package*' | head -n 1)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "::error::No .app bundle found after the build" >&2
+            exit 1
+          fi
+          echo "Checking $APP_BUNDLE"
+          FAILED=0
+          for f in "$APP_BUNDLE"/Contents/MacOS/*; do
+            [ -f "$f" ] || continue
+            if file "$f" | grep -q 'Mach-O'; then
+              echo "== $f"
+              otool -l "$f" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' || true
+              if ! otool -l "$f" | grep -Eq 'minos 10\.15|version 10\.15'; then
+                echo "::error::$f does not target macOS 10.15" >&2
+                FAILED=1
+              fi
+            fi
+          done
+          exit "$FAILED"
+
+      - name: Locate DMG and checksum
+        id: dmg
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          DMG="$(find "$GITHUB_WORKSPACE/src" -name '*-macos-x86_64.dmg' -not -path '*/target/*' | head -n 1)"
+          if [ -z "$DMG" ]; then
+            echo "::error::DMG not found" >&2
+            exit 1
+          fi
+          echo "path=$DMG" >> "$GITHUB_OUTPUT"
+          SUM="$(shasum -a 256 "$DMG")"
+          echo "$SUM"
+          {
+            echo "### $APP $UPSTREAM_REF"
+            echo '```'
+            echo "$SUM"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-${{ env.UPSTREAM_REF }}-macos10.15-x86_64
+          path: ${{ steps.dmg.outputs.path }}
+          # Short retention while it is unclear whether public builds are allowed.
+          retention-days: 3
+          if-no-files-found: error
