@@ -1,0 +1,33 @@
+diff --git a/apps/photocraft/src/screen_color.rs b/apps/photocraft/src/screen_color.rs
+index 6a5ae643c..5d79c3c7a 100644
+--- a/apps/photocraft/src/screen_color.rs
++++ b/apps/photocraft/src/screen_color.rs
+@@ -290,11 +290,26 @@ fn capture(_wayland: bool, _scale: f32, stop: &std::sync::atomic::AtomicBool, pl
+     }
+     Ok(Capture::Images(images))
+ }
++/// `CGPreflightScreenCaptureAccess` and `CGRequestScreenCaptureAccess` were added in macOS 11;
++/// calling them on macOS 10.15 aborts. There the system asks for the permission itself when the
++/// screen is first read, so the check is skipped.
++#[cfg(target_os = "macos")]
++fn screen_capture_access_api_exists() -> bool {
++    let Ok(out) = std::process::Command::new("/usr/bin/sw_vers").arg("-productVersion").output() else {
++        return true;
++    };
++    let text = String::from_utf8_lossy(&out.stdout);
++    let mut parts = text.trim().split('.').map(|p| p.parse::<u32>().ok());
++    match (parts.next().flatten(), parts.next().flatten()) {
++        // Big Sur reports itself as 10.16 to binaries built against an older SDK.
++        (Some(10), Some(minor)) => minor >= 16,
++        _ => true,
++    }
++}
+ #[cfg(target_os = "macos")]
+ fn capture(_wayland: bool, _scale: f32, stop: &std::sync::atomic::AtomicBool, placements: &[Placement]) -> Result<Capture, String> {
+     use core_graphics2::{display::get_active_display_list, image::CGImageAlphaInfo as Alpha, window};
+-    if !window::preflight_screen_capture_access() && !window::request_screen_capture_access() {
+-        return Err("Allow PhotoCraft in System Settings > Privacy & Security > Screen Recording, then reopen PhotoCraft".into());
++            if screen_capture_access_api_exists() && !window::preflight_screen_capture_access() && !window::request_screen_capture_access() {
+     }
+     let displays = get_active_display_list(17).ok_or("Could not enumerate displays")?;
+     if displays.is_empty() || displays.len() > 16 {
