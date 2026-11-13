@@ -8,12 +8,36 @@ name: Catalina builds (manual)
 on:
   workflow_dispatch:
     inputs:
-      apps:
-        description: "Apps to build: one or more repo names separated by commas (e.g. photocraft, wordcraft) or 'all' (the 16 apps without craftanything)"
-        required: true
-        default: "photocraft"
+      app:
+        description: "App to build (pick one, or a group)"
+        type: choice
+        default: photocraft
+        options:
+          - photocraft
+          - wordcraft
+          - gridcraft
+          - designcraft
+          - filmcraft
+          - "tested apps (photocraft, wordcraft, gridcraft, designcraft, filmcraft)"
+          - "all 16 apps (without craftanything)"
+          - anicraft
+          - cadcraft
+          - deckcraft
+          - effectcraft
+          - figcraft
+          - lightcraft
+          - materialcraft
+          - pdfcraft
+          - soundcraft
+          - texturecraft
+          - vectorcraft
+          - craftanything
+      more_apps:
+        description: "Optional: more repo names, separated by commas (e.g. vectorcraft, pdfcraft)"
+        required: false
+        default: ""
       ref:
-        description: "Upstream tag or branch to build (empty = latest v* tag of each app). Only sensible when building a single app."
+        description: "Upstream tag or branch (empty = latest v* tag of each app). Only sensible for a single app."
         required: false
         default: ""
 
@@ -29,18 +53,25 @@ jobs:
       - name: Build the app list
         id: m
         env:
-          INPUT_APPS: ${{ inputs.apps }}
+          CHOICE: ${{ inputs.app }}
+          MORE: ${{ inputs.more_apps }}
         run: |
           # Repo names under github.com/storytold/. The name of the Craft Anything repo is a guess:
-          # check it and change "craftanything" here if it differs.
+          # check it and change "craftanything" here and in the options above if it differs.
           ALL="photocraft vectorcraft filmcraft lightcraft pdfcraft effectcraft anicraft designcraft figcraft texturecraft materialcraft soundcraft wordcraft deckcraft cadcraft gridcraft"
+          TESTED="photocraft wordcraft gridcraft designcraft filmcraft"
           KNOWN="$ALL craftanything"
-          SEL="$(printf '%s' "$INPUT_APPS" | tr ',;' '  ' | tr 'A-Z' 'a-z')"
+          case "$CHOICE" in
+            tested*) SEL="$TESTED" ;;
+            all*)    SEL="$ALL" ;;
+            *)       SEL="$CHOICE" ;;
+          esac
+          EXTRA="$(printf '%s' "$MORE" | tr ',;' '  ' | tr 'A-Z' 'a-z')"
+          SEL="$SEL $EXTRA"
           if [ -z "$(printf '%s' "$SEL" | tr -d ' ')" ]; then
             echo "::error::No app given" >&2
             exit 1
           fi
-          case " $SEL " in *" all "*) SEL="$ALL" ;; esac
           for a in $SEL; do
             case " $KNOWN " in
               *" $a "*) ;;
