@@ -99,9 +99,14 @@ CRAFT_REF=v0.5.0 bash install.sh wordcraft   # build a specific tag or branch
 CRAFT_BUILD_DIR=/Volumes/Big/craft bash install.sh   # build somewhere else
 ```
 
-**Update:** run `git pull` in the `craft-catalina` folder (new patches), then `bash install.sh`
-again. The script fetches the latest release of the app and discards local changes in its own build
-folder. Build output is kept, so later builds are faster.
+**Update:** just run `bash install.sh` again. It first runs `git pull` in the `craft-catalina`
+folder, so new patches and script fixes are used (and if `install.sh` itself changed, it restarts
+itself). Then it fetches the latest release of the app and discards local changes in its own build
+folder. Build output is kept, so later builds are faster. Offline, or to skip the pull, use
+`CRAFT_NO_UPDATE=1 bash install.sh`.
+
+If the pull fails with a message about untracked files, you created a file in `patches/` by hand
+that now exists in this repository: delete your copy and run the script again.
 
 ## Build on GitHub (no Mac needed)
 
