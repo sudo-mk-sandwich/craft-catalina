@@ -7,9 +7,9 @@ their contributors and are licensed under MIT OR Apache-2.0.
 
 This repository contains **no app source code and no logos**. It only holds:
 
-- `.github/workflows/catalina-builds.yml`: a GitHub Actions workflow that checks out the original
-  repository of an app, lowers the minimum macOS version and builds it,
-- `patches/<app>.patch`: small source patches for apps that need more than the version change,
+- `install.sh`: a script that builds one app of your choice on your own Mac,
+- `.github/workflows/catalina-builds.yml`: a GitHub Actions workflow that builds one app on GitHub,
+- `patches/`: small source patches for apps that need more than the version change,
 - this README.
 
 Builds are **Intel (x86_64) only**, **ad-hoc signed and not notarized**. Apple silicon Macs do not
@@ -19,123 +19,155 @@ need this project: the original apps run there on macOS 11 and newer.
 
 1. **Minimum macOS version lowered from 11.0 to 10.15** in `packaging/macos/package.sh`
    (`MACOSX_DEPLOYMENT_TARGET`) and `packaging/macos/Info.plist.in` (`LSMinimumSystemVersion`).
-2. **App-specific patches** (see the table).
+2. **App-specific patches** from `patches/<app>.patch`, applied to every new version of that app.
+   If a new upstream version breaks a patch, the build stops with a clear message and the patch has
+   to be fixed.
 
-Features that need newer system APIs than Catalina has can still fail at runtime. Linking a
-newer-SDK build for 10.15 does not prove that every function works there; every app needs a test
-on a real Catalina Mac.
+The latest stable release (`v*` tag) of each app is built; pre-releases are only used when an app
+has nothing else.
 
 ## Status
 
+Initially tested in November 2026 with the then-current releases (for example PhotoCraft 0.23.1).
+Newer versions are built the same way, but only the first tested version is known to work.
+
+"Basic tests" means: the app starts, and documents can be opened and saved. Other functions are
+**not** tested. Linking an app for 10.15 does not prove that every function exists there; a
+function from a newer macOS can still crash the app when it is used.
+
 | App | Patch | Tested on Catalina |
 |---|---|---|
-| PhotoCraft 0.23.1 | `patches/photocraft.patch`: the screen color picker used two system functions that exist only from macOS 11 and crashed on 10.15; the patch skips them there | start, open and save, screen color picker |
-| all others | none yet | not tested |
+| AniCraft | none | not tested |
+| CADCraft | none | not tested |
+| Craft Anything | none | not tested |
+| DeckCraft | none | not tested |
+| DesignCraft | none | basic tests |
+| EffectCraft | none | not tested |
+| FigCraft | none | not tested |
+| FilmCraft | none | basic tests |
+| GridCraft | none | basic tests |
+| LightCraft | none | not tested |
+| MaterialCraft | none | not tested |
+| PdfCraft | none | basic tests |
+| PhotoCraft | `patches/photocraft.patch`: the screen color picker called two system functions that exist only from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
+| SoundCraft | none | not tested |
+| TextureCraft | none | not tested |
+| VectorCraft | none | not tested |
+| WordCraft | none | basic tests |
 
 Please report test results (what works, what crashes) as an issue.
 
-## Build with GitHub (no Mac needed)
+## Build on your Mac with `install.sh`
 
-1. Fork this repository (or use it directly if you are the owner).
-2. Open the **Actions** tab, enable workflows, choose **Catalina builds (manual)** and
-   **Run workflow**.
-3. Enter the app repo name (for example `photocraft` or `wordcraft`), several separated by commas,
-   or `all`. Leave "ref" empty to build the latest `v*` tag of each app.
-4. When the run is finished, the `.dmg` is attached to the run as an artifact.
-
-## Build it yourself (step by step)
-
-Everything below is typed into the **Terminal** app (Applications > Utilities > Terminal).
-The first build of an app takes a long time (30 minutes or more on an older Mac) and needs several
-GB of free disk space. Replace `photocraft` with the name of the app you want.
-
-### 1. Apple developer tools
+Everything is typed into the **Terminal** app (Applications > Utilities > Terminal). You need a
+Mac with macOS 10.15 and an internet connection. The first build of an app takes a long time (30
+minutes or more on an older Mac) and needs several GB of free disk space. The script builds **one
+app per run**.
 
 ```
-xcode-select --install
-```
-
-If it says the software is not available for Catalina, download **Command Line Tools for Xcode
-12.4** from https://developer.apple.com/download/all/ (a free Apple ID is enough), install the
-`.dmg` and check with `xcrun --show-sdk-version`, which should print `10.15` or higher.
-
-### 2. Rust
-
-```
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Press Enter for the default installation, then **close the Terminal window and open a new one**.
-Check with `cargo --version`.
-
-### 3. Get the code
-
-```
-mkdir -p ~/craft-build
-cd ~/craft-build
-git clone https://github.com/storytold/craft-i18n.git
-git clone https://github.com/storytold/photocraft.git
 git clone https://github.com/sudo-mk-sandwich/craft-catalina.git
-cd photocraft
-git checkout v0.23.1
+cd craft-catalina
+bash install.sh
 ```
 
-`craft-i18n` holds the translations; without it the app is English only. Use the version you want
-to build instead of `v0.23.1`; the patch was tested with that version, others may no longer match.
+If macOS opens a window and offers to install the developer tools when you type `git`, accept,
+wait until it is finished, and type the commands again.
 
-### 4. Apply the changes
+The script then:
 
-```
-sed -i '' 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
-perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' packaging/macos/Info.plist.in
-```
+1. shows a menu: choose the app with the **arrow keys** (or `j`/`k`), start with **Enter**, leave
+   with `q`. Apps marked `[basic tests done]` were tested on Catalina,
+2. checks whether the Apple developer tools are installed (and starts their installation if not),
+3. checks whether Rust is installed. If not, it explains what it will do and asks before it runs
+   the official installer from https://sh.rustup.rs. It also updates Rust and adds the Intel target,
+4. clones the app and the translations (`craft-i18n`) into `~/craft-build`,
+5. checks out the latest stable release, lowers the minimum macOS version to 10.15 and applies the
+   patch for that app if there is one,
+6. builds, and opens the folder with the finished app (`target/macos-package`). The path of the
+   disk image (`.dmg`) is printed as well.
 
-If `../craft-catalina/patches/photocraft.patch` exists, apply it:
-
-```
-git apply ../craft-catalina/patches/photocraft.patch
-```
-
-Check with `git diff --stat`: it should list `package.sh`, `Info.plist.in` and, for PhotoCraft,
-`screen_color.rs`.
-
-### 5. PhotoCraft only: linker setting for the 10.15 SDK
-
-If your developer tools contain the macOS 10.15 SDK, the linker does not know the two functions
-mentioned in the status table and stops with `Undefined symbols ... _CGPreflightScreenCaptureAccess`.
-This setting makes it resolve them at runtime (the patch makes sure they are only called where
-they exist). Run the two lines one after the other:
-
-```
-mkdir -p .cargo
-```
-
-```
-printf '[target.x86_64-apple-darwin]\nrustflags = [\n  "-C", "link-arg=-Wl,-U,_CGPreflightScreenCaptureAccess",\n  "-C", "link-arg=-Wl,-U,_CGRequestScreenCaptureAccess",\n]\n' > .cargo/config.toml
-```
-
-Do not use this for other apps. If another app stops with `Undefined symbols`, it uses a system
-function that Catalina does not have, which needs a patch; please open an issue with the message.
-
-### 6. Build
-
-```
-CRAFT_I18N_DIR="$PWD/../craft-i18n" ./packaging/macos/package.sh --arch x86_64
-```
-
-Warnings are normal. Stop only at lines that start with `error`.
-
-### 7. Where is the app?
-
-- The app: `target/macos-package/` inside the app's folder, for example
-  `~/craft-build/photocraft/target/macos-package/`. Open it with `open target/macos-package`.
-- A disk image (`.dmg`) is also created; the last lines of the build output print its path.
+It **stops at the first error** so that it can be fixed; run it again afterwards.
 
 Drag the app into your Applications folder. Because it is not signed by Apple, open it the first
 time with **right-click > Open**, then confirm.
 
+Useful variants:
+
+```
+bash install.sh wordcraft                 # skip the menu
+CRAFT_REF=v0.5.0 bash install.sh wordcraft   # build a specific tag or branch
+CRAFT_BUILD_DIR=/Volumes/Big/craft bash install.sh   # build somewhere else
+```
+
+**Update:** run `git pull` in the `craft-catalina` folder (new patches), then `bash install.sh`
+again. The script fetches the latest release of the app and discards local changes in its own build
+folder. Build output is kept, so later builds are faster.
+
+## Build on GitHub (no Mac needed)
+
+1. Fork this repository.
+2. Open the **Actions** tab, enable workflows, choose **Catalina builds (manual)** and
+   **Run workflow**.
+3. Pick the app in the list. Leave "ref" empty to build the latest stable release.
+4. When the run is finished, the `.dmg` is attached to the run as an artifact (kept for 3 days).
+
+The GitHub build uses a newer macOS SDK than the one on a Catalina Mac. It shows whether an app
+compiles, but not whether it runs on Catalina; test the result on a real Catalina Mac.
+
+## Troubleshooting
+
+- **`Undefined symbols ... _CG...` while linking:** the app calls a system function that Catalina
+  does not have. That needs a patch for this app. Please open an issue with the last 30 lines of the
+  output. (PhotoCraft gets a linker setting from `patches/photocraft.cargo-config.toml` for this.)
+- **`patches/<app>.patch does not apply`:** the app changed the code the patch touches. Please open
+  an issue; build an older release meanwhile with `CRAFT_REF=<tag>`.
+- **`MACOSX_DEPLOYMENT_TARGET is not 10.15 ... after the change`:** upstream changed the lines the
+  script edits (for example to a higher version). Please open an issue.
+- **An app has no release yet** (for example a brand new app): name a branch yourself, for example
+  `CRAFT_REF=main bash install.sh <app>`.
+- **The app crashes when a certain function is used:** start it from the Terminal to see the
+  message, for example `/Applications/WordCraft.app/Contents/MacOS/WordCraft`, and open an issue
+  with the output.
+
+## Build by hand (alternative to the script)
+
+For people who want to see every step. Replace `wordcraft` with the app you want.
+
+```
+xcode-select --install
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Press Enter for the default installation of Rust, then **close the Terminal window and open a new
+one**, and add the Intel target:
+
+```
+rustup target add x86_64-apple-darwin
+mkdir -p ~/craft-build
+cd ~/craft-build
+git clone https://github.com/storytold/craft-i18n.git
+git clone https://github.com/storytold/wordcraft.git
+git clone https://github.com/sudo-mk-sandwich/craft-catalina.git
+cd wordcraft
+git checkout "$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | head -n 1)"
+```
+
+Lower the minimum version, then apply the patch if `../craft-catalina/patches/wordcraft.patch`
+exists (for PhotoCraft also copy `../craft-catalina/patches/photocraft.cargo-config.toml` to
+`.cargo/config.toml` after `mkdir -p .cargo`):
+
+```
+perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
+perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' packaging/macos/Info.plist.in
+git apply ../craft-catalina/patches/wordcraft.patch
+CRAFT_I18N_DIR="$PWD/../craft-i18n" ./packaging/macos/package.sh --arch x86_64
+open target/macos-package
+```
+
+(Leave out the `git apply` line if there is no patch for the app.)
+
 ## License
 
-The code that gets built is under MIT OR Apache-2.0, see the original repositories for
-`LICENSE-MIT`, `LICENSE-APACHE` and `NOTICE`; those files are also bundled in the apps. This
-repository's own files (workflow, patches, README) are provided as is, without warranty.
+The code that gets built is under MIT OR Apache-2.0; see the original repositories for
+`LICENSE-MIT`, `LICENSE-APACHE` and `NOTICE`. Those files are also bundled in the apps. This
+repository's own files (script, workflow, patches, README) are provided as is, without warranty.
