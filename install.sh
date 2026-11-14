@@ -195,7 +195,7 @@ self_update() {
   fi
   say "Checking for updates of this script and the patches (git pull)"
   before="$(cksum < "$SELF")"
-  if out="$(git -C "$SCRIPT_DIR" pull --ff-only 2>&1)"; then
+  if out="$(LC_ALL=C git -C "$SCRIPT_DIR" pull --ff-only 2>&1)"; then
     printf '%s\n' "$out"
     after="$(cksum < "$SELF")"
     if [ "$before" != "$after" ]; then
@@ -206,7 +206,8 @@ self_update() {
     printf '%s\n' "$out" >&2
     warn "git pull failed; continuing with the local version of the script and patches."
     case "$out" in
-      *untracked*) warn "You created a file in patches/ by hand that now exists on GitHub: delete your copy and run this script again." ;;
+      *untracked*) warn "You created a file in patches/ by hand that now exists on GitHub: delete your copy (rm patches/<file>) and run this script again." ;;
+      *"local changes"*) warn "You changed a file in this folder by hand. Undo it with: git checkout -- <file> (or git stash), then run this script again." ;;
     esac
   fi
 }
