@@ -52,7 +52,7 @@ function from a newer macOS can still crash the app when it is used.
 | PhotoCraft | `patches/photocraft.patch`: the screen color picker called two system functions that exist only from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
 | SoundCraft | none | not tested |
 | TextureCraft | none | not tested |
-| VectorCraft | none | not tested |
+| VectorCraft | none | basic tests |
 | WordCraft | none | basic tests |
 
 Please report test results (what works, what crashes) as an issue.
