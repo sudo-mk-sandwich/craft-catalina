@@ -4,7 +4,8 @@
 #   bash install.sh              pick the app in a menu (arrow keys, Enter)
 #   bash install.sh wordcraft    build that app directly
 #
-# What it does: checks Apple developer tools and Rust (installs Rust after asking), clones the app
+# What it does: first updates itself and the patches (git pull in the folder it lives in), then
+# checks Apple developer tools and Rust (installs Rust after asking), clones the app
 # and craft-i18n (translations) into ~/craft-build, checks out the latest stable release tag,
 # lowers the minimum macOS version to 10.15, applies patches/<app>.patch if there is one, builds,
 # and opens the folder with the finished app. It stops at the first error so it can be fixed.
@@ -13,6 +14,7 @@
 #   CRAFT_BUILD_DIR   where the sources and builds live (default ~/craft-build)
 #   CRAFT_REF         build this tag or branch instead of the latest stable tag
 #   CRAFT_GIT_BASE    where the repositories are cloned from (default https://github.com/storytold)
+#   CRAFT_NO_UPDATE   set to 1 to skip the git pull of this script's own repository (offline use)
 #
 # Written for the bash 3.2 that ships with macOS 10.15: no associative arrays, no mapfile.
 set -eu
@@ -21,6 +23,7 @@ set -o pipefail
 GIT_BASE="${CRAFT_GIT_BASE:-https://github.com/storytold}"
 WORK="${CRAFT_BUILD_DIR:-$HOME/craft-build}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SELF="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 
 APPS=(anicraft cadcraft craft-anything deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft materialcraft pdfcraft photocraft soundcraft texturecraft vectorcraft wordcraft)
 DESCR=(
@@ -179,12 +182,43 @@ die_build() {
   patch for this app: please open an issue with the last 30 lines of the output."
 }
 
+# ---- self update -------------------------------------------------------------------------------
+# Pull the repository this script lives in, so new patches and script fixes are used without any
+# extra step. If the pull changed this very file, start the new version (once) instead of running
+# on with the old one.
+self_update() {
+  local before after out
+  if [ "${CRAFT_NO_UPDATE:-}" = "1" ] || [ "${CRAFT_SELF_UPDATED:-}" = "1" ]; then return 0; fi
+  if ! git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "(This folder is not a git clone, so the script and patches are not updated automatically.)"
+    return 0
+  fi
+  say "Checking for updates of this script and the patches (git pull)"
+  before="$(cksum < "$SELF")"
+  if out="$(git -C "$SCRIPT_DIR" pull --ff-only 2>&1)"; then
+    printf '%s\n' "$out"
+    after="$(cksum < "$SELF")"
+    if [ "$before" != "$after" ]; then
+      say "install.sh was updated; restarting it"
+      CRAFT_SELF_UPDATED=1 exec bash "$SELF" "$@"
+    fi
+  else
+    printf '%s\n' "$out" >&2
+    warn "git pull failed; continuing with the local version of the script and patches."
+    case "$out" in
+      *untracked*) warn "You created a file in patches/ by hand that now exists on GitHub: delete your copy and run this script again." ;;
+    esac
+  fi
+}
+
 # ---- main --------------------------------------------------------------------------------------
 [ "$(uname -s)" = "Darwin" ] || die "This script is for macOS."
 if [ "$(uname -m)" != "x86_64" ]; then
   warn "This Mac is not an Intel Mac. The apps already run on Apple silicon with macOS 11 or newer."
   ask "Build an Intel version anyway?" || exit 0
 fi
+
+self_update "$@"
 
 if [ "$#" -ge 1 ]; then
   APP="$(printf '%s' "$1" | tr 'A-Z' 'a-z')"
