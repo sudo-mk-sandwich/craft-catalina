@@ -37,7 +37,7 @@ function from a newer macOS can still crash the app when it is used.
 
 | App | Patch | Tested on Catalina |
 |---|---|---|
-| AniCraft | none | not tested |
+| AniCraft | none (linker setting `patches/anicraft.cargo-config.toml`: system-audio capture needs macOS 14.2+, so it is looked up only when used) | starts and runs; the in-app menu bar is only visible in full-screen mode (may also happen upstream) |
 | CADCraft | none | not tested |
 | Craft Anything | none | not tested |
 | DeckCraft | none | not tested |
@@ -105,8 +105,9 @@ itself). Then it fetches the latest release of the app and discards local change
 folder. Build output is kept, so later builds are faster. Offline, or to skip the pull, use
 `CRAFT_NO_UPDATE=1 bash install.sh`.
 
-If the pull fails with a message about untracked files, you created a file in `patches/` by hand
-that now exists in this repository: delete your copy and run the script again.
+If the pull fails, you created or changed a file in this folder by hand that now exists in this
+repository: delete your copy (`rm patches/<file>`) or undo the change (`git checkout -- <file>`)
+and run the script again.
 
 ## Build on GitHub (no Mac needed)
 
@@ -123,7 +124,7 @@ compiles, but not whether it runs on Catalina; test the result on a real Catalin
 
 - **`Undefined symbols ... _CG...` while linking:** the app calls a system function that Catalina
   does not have. That needs a patch for this app. Please open an issue with the last 30 lines of the
-  output. (PhotoCraft gets a linker setting from `patches/photocraft.cargo-config.toml` for this.)
+  output. (PhotoCraft and AniCraft get a linker setting from `patches/<app>.cargo-config.toml` for this.)
 - **`patches/<app>.patch does not apply`:** the app changed the code the patch touches. Please open
   an issue; build an older release meanwhile with `CRAFT_REF=<tag>`.
 - **`MACOSX_DEPLOYMENT_TARGET is not 10.15 ... after the change`:** upstream changed the lines the
