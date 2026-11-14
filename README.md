@@ -46,7 +46,7 @@ function from a newer macOS can still crash the app when it is used.
 | FigCraft | none | not tested |
 | FilmCraft | none | basic tests |
 | GridCraft | none | basic tests |
-| LightCraft | none | not tested |
+| LightCraft | none | starts and runs; the first start hung once and worked after quitting the app (kill) and starting it again |
 | MaterialCraft | none | not tested |
 | PdfCraft | none | basic tests |
 | PhotoCraft | `patches/photocraft.patch`: the screen color picker called two system functions that exist only from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
