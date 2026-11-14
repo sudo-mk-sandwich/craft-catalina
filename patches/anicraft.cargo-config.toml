@@ -1,0 +1,12 @@
+# Used by install.sh only (copied to .cargo/config.toml of the app before the build).
+#
+# With the macOS 10.15 SDK the linker does not know AudioHardwareDestroyProcessTap, a CoreAudio
+# function for capturing system audio that exists only on newer macOS (process taps, macOS 14.2+).
+# The audio library (cpal) references it from the clean-up code of its loopback device, so the link
+# stops with "Undefined symbols". -U lets the linker leave it to be resolved at runtime; it is
+# only looked up when the function is really called, i.e. when a loopback (system audio) device is
+# used. The GitHub workflow does not need this file: its runner has a newer SDK.
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C", "link-arg=-Wl,-U,_AudioHardwareDestroyProcessTap",
+]
