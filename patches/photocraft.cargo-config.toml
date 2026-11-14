@@ -1,0 +1,11 @@
+# Used by install.sh only (copied to .cargo/config.toml of the app before the build).
+#
+# With the macOS 10.15 SDK the linker does not know these two functions, which exist only from
+# macOS 11, and stops with "Undefined symbols". -U lets the linker leave them to be resolved at
+# runtime. patches/photocraft.patch makes sure the app only calls them where they exist.
+# The GitHub workflow does not need this file: its runner has a newer SDK.
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C", "link-arg=-Wl,-U,_CGPreflightScreenCaptureAccess",
+  "-C", "link-arg=-Wl,-U,_CGRequestScreenCaptureAccess",
+]
