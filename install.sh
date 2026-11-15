@@ -282,6 +282,28 @@ fi
 CFG="$SCRIPT_DIR/patches/$APP.cargo-config.toml"
 if [ -f "$CFG" ]; then
   say "Adding linker settings from patches/$APP.cargo-config.toml"
+  STUBS="$WORK/stubs/$APP"
+  mkdir -p "$STUBS"
+  # Optional helpers some apps need (see the comments in the cargo-config file):
+  # a small C file with replacements for system functions Catalina does not have ...
+  SHIMC="$SCRIPT_DIR/patches/$APP.shim.c"
+  if [ -f "$SHIMC" ]; then
+    clang -c -arch x86_64 -mmacosx-version-min=10.15 -o "$STUBS/shim.o" "$SHIMC" || die "Compiling patches/$APP.shim.c failed."
+  fi
+  # ... and empty placeholders for frameworks that only the link step wants to see.
+  FWLIST="$SCRIPT_DIR/patches/$APP.stub-frameworks"
+  if [ -f "$FWLIST" ]; then
+    while IFS= read -r fw || [ -n "$fw" ]; do
+      case "$fw" in ""|*[!A-Za-z0-9]*) continue ;; esac
+      mkdir -p "$STUBS/$fw.framework"
+      printf 'void %s_stub(void) {}\n' "$fw" > "$STUBS/$fw.c"
+      clang -dynamiclib -arch x86_64 -mmacosx-version-min=10.15 \
+        -install_name "/System/Library/Frameworks/$fw.framework/Versions/A/$fw" \
+        -o "$STUBS/$fw.framework/$fw" "$STUBS/$fw.c" || die "Creating the placeholder for the framework $fw failed."
+    done < "$FWLIST"
+  fi
+  sed -e "s|@STUBS_DIR@|$STUBS|g" -e "s|@SHIM_OBJ@|$STUBS/shim.o|g" "$CFG" > "$STUBS/cargo-config.toml"
+  CFG="$STUBS/cargo-config.toml"
   mkdir -p .cargo
   if [ -f .cargo/config.toml ]; then
     # The app has its own cargo config (for example an alias): add ours after it.
