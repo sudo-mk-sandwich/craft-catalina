@@ -1,7 +1,8 @@
 name: Catalina builds (manual)
 
 # Builds ONE upstream Craft app for Intel macOS 10.15+ and stores the DMG as a build artifact.
-# This repository holds no app source: the workflow checks out storytold/<app>, lowers the
+# This repository holds no app source: the workflow checks out the upstream app (storytold/<app>,
+# MailCraft: UCS-Care-Group/mailcraft, SolidCraft: tangency-labs/solidcraft), lowers the
 # minimum macOS version and applies patches/<app>.patch if that file exists.
 # Manual start only. It does NOT create a public release.
 
@@ -23,9 +24,11 @@ on:
           - filmcraft
           - gridcraft
           - lightcraft
+          - mailcraft
           - materialcraft
           - pdfcraft
           - photocraft
+          - solidcraft
           - soundcraft
           - texturecraft
           - vectorcraft
@@ -51,7 +54,7 @@ jobs:
       - name: Check out upstream ${{ inputs.app }}
         uses: actions/checkout@v4
         with:
-          repository: storytold/${{ inputs.app }}
+          repository: ${{ inputs.app == 'mailcraft' && 'UCS-Care-Group' || inputs.app == 'solidcraft' && 'tangency-labs' || 'storytold' }}/${{ inputs.app }}
           path: src
           fetch-depth: 0
           fetch-tags: true
@@ -78,7 +81,7 @@ jobs:
             fi
           fi
           if [ -z "$REF" ]; then
-            echo "::error::No v* tag in storytold/$APP. Start again with an explicit 'ref'." >&2
+            echo "::error::No v* tag in $APP. Start again with an explicit 'ref'." >&2
             exit 1
           fi
           echo "Building $APP at upstream ref: $REF"
@@ -90,14 +93,18 @@ jobs:
         working-directory: src
         run: |
           test -f packaging/macos/package.sh || { echo "::error::packaging/macos/package.sh not found"; exit 1; }
-          test -f packaging/macos/Info.plist.in || { echo "::error::packaging/macos/Info.plist.in not found"; exit 1; }
+          PLIST=""
+          for p in packaging/macos/Info.plist.in assets/platforms/macos/Info.plist.in; do
+            if [ -z "$PLIST" ] && [ -f "$p" ]; then PLIST="$p"; fi
+          done
+          [ -n "$PLIST" ] || { echo "::error::No Info.plist.in found"; exit 1; }
           perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
-          perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' packaging/macos/Info.plist.in
+          perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' "$PLIST"
           grep -n 'MACOSX_DEPLOYMENT_TARGET' packaging/macos/package.sh
-          grep -n -A1 'LSMinimumSystemVersion' packaging/macos/Info.plist.in
+          grep -n -A1 'LSMinimumSystemVersion' "$PLIST"
           # Fails if the lines look different in this app (or if upstream changed them to something else).
           grep -q 'MACOSX_DEPLOYMENT_TARGET=10.15' packaging/macos/package.sh || { echo "::error::MACOSX_DEPLOYMENT_TARGET is not 10.15 after the change"; exit 1; }
-          grep -A1 'LSMinimumSystemVersion' packaging/macos/Info.plist.in | grep -q '<string>10.15</string>' || { echo "::error::LSMinimumSystemVersion is not 10.15 after the change"; exit 1; }
+          grep -A1 'LSMinimumSystemVersion' "$PLIST" | grep -q '<string>10.15</string>' || { echo "::error::LSMinimumSystemVersion is not 10.15 after the change"; exit 1; }
 
       - name: Apply patches/${{ inputs.app }}.patch (if present)
         working-directory: src
