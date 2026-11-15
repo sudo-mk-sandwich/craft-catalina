@@ -48,7 +48,7 @@ DESCR=(
   "Word processor"
 )
 # Apps with basic tests on Catalina (start, open and save). Shown in the menu.
-TESTED=" anicraft cadcraft deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft materialcraft pdfcraft photocraft soundcraft texturecraft vectorcraft wordcraft "
+TESTED=" anicraft cadcraft deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft materialcraft pdfcraft photocraft solidcraft soundcraft texturecraft vectorcraft wordcraft "
 
 say() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -346,7 +346,21 @@ fi
 
 say "Building (the first build of an app takes a long time; warnings are normal)"
 # "bash" in front: some apps (MailCraft) have the script without the executable flag in git.
-CRAFT_I18N_DIR="$WORK/craft-i18n" bash ./packaging/macos/package.sh --arch x86_64 || die_build
+# The output is also kept in a log file to tell a failed disk image from a failed build.
+LOG="$WORK/last-build-$APP.log"
+set +e
+CRAFT_I18N_DIR="$WORK/craft-i18n" bash ./packaging/macos/package.sh --arch x86_64 2>&1 | tee "$LOG"
+BUILD_RC="${PIPESTATUS[0]}"
+set -e
+if [ "$BUILD_RC" -ne 0 ]; then
+  # The disk image (.dmg) is the very last step, after the app is built, assembled and signed. Some
+  # apps need a newer Python for it than Catalina has. The app itself is then finished and usable.
+  if grep -q '^==> building .*\.dmg' "$LOG" && ls -d "$APPDIR"/target/macos-package/*.app >/dev/null 2>&1; then
+    warn "The app is finished, but the last step (creating the disk image .dmg) failed. The disk image is not needed: use the app from the folder that opens next."
+  else
+    die_build
+  fi
+fi
 
 OUT="$(find "$APPDIR/target" -maxdepth 3 -type d -name macos-package 2>/dev/null | head -n 1 || true)"
 if [ -z "$OUT" ]; then OUT="$APPDIR"; fi
