@@ -345,7 +345,8 @@ if grep -q resvg packaging/macos/package.sh && ! command -v resvg >/dev/null 2>&
 fi
 
 say "Building (the first build of an app takes a long time; warnings are normal)"
-CRAFT_I18N_DIR="$WORK/craft-i18n" ./packaging/macos/package.sh --arch x86_64 || die_build
+# "bash" in front: some apps (MailCraft) have the script without the executable flag in git.
+CRAFT_I18N_DIR="$WORK/craft-i18n" bash ./packaging/macos/package.sh --arch x86_64 || die_build
 
 OUT="$(find "$APPDIR/target" -maxdepth 3 -type d -name macos-package 2>/dev/null | head -n 1 || true)"
 if [ -z "$OUT" ]; then OUT="$APPDIR"; fi
