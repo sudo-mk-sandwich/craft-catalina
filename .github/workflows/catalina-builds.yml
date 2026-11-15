@@ -125,7 +125,7 @@ jobs:
         working-directory: src
         env:
           CRAFT_I18N_DIR: ${{ github.workspace }}/craft-i18n
-        run: ./packaging/macos/package.sh --arch x86_64
+        run: bash ./packaging/macos/package.sh --arch x86_64
 
       - name: Verify minimum system version
         working-directory: src
