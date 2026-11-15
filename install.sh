@@ -46,7 +46,7 @@ DESCR=(
   "Word processor"
 )
 # Apps with basic tests on Catalina (start, open and save). Shown in the menu.
-TESTED=" anicraft deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft pdfcraft photocraft soundcraft vectorcraft wordcraft "
+TESTED=" anicraft cadcraft deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft materialcraft pdfcraft photocraft soundcraft texturecraft vectorcraft wordcraft "
 
 say() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
