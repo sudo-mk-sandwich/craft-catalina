@@ -37,7 +37,7 @@ function from a newer macOS can still crash the app when it is used.
 
 | App | Patch | Tested on Catalina |
 |---|---|---|
-| AniCraft | none (linker setting `patches/anicraft.cargo-config.toml`: system-audio capture needs macOS 14.2+, so it is looked up only when used) | starts and runs; the in-app menu bar is only visible in full-screen mode (may also happen upstream) |
+| AniCraft | none (linker setting `patches/anicraft.cargo-config.toml`: system-audio capture needs macOS 14.2+, so it is looked up only when used) | basic tests; the in-app menu bar is only visible in full-screen mode (may also happen upstream) |
 | CADCraft | none | not tested |
 | Craft Anything | none | not tested |
 | DeckCraft | none | not tested |
@@ -46,7 +46,7 @@ function from a newer macOS can still crash the app when it is used.
 | FigCraft | none | not tested |
 | FilmCraft | none | basic tests |
 | GridCraft | none | basic tests |
-| LightCraft | none | starts and runs; the first start hung once and worked after quitting the app (kill) and starting it again |
+| LightCraft | none | basic tests; the first start hung once and worked after quitting the app (kill) and starting it again |
 | MaterialCraft | none | not tested |
 | PdfCraft | none | basic tests |
 | PhotoCraft | `patches/photocraft.patch`: the screen color picker called two system functions that exist only from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
@@ -99,7 +99,18 @@ CRAFT_REF=v0.5.0 bash install.sh wordcraft   # build a specific tag or branch
 CRAFT_BUILD_DIR=/Volumes/Big/craft bash install.sh   # build somewhere else
 ```
 
-**Update:** just run `bash install.sh` again. It first runs `git pull` in the `craft-catalina`
+**Update:** the apps' own automatic in-app updates do **not** work with these builds. To update an
+app, run `install.sh` again. The three commands above (`git clone`, `cd`, `bash install.sh`) are
+needed only the first time; afterwards it is enough to open the Terminal, go into the folder and
+start the script:
+
+```
+cd craft-catalina
+bash install.sh
+```
+
+(The `cd` path is relative to where you ran `git clone`; with a new Terminal window that is
+usually your home folder.) The script first runs `git pull` in the `craft-catalina`
 folder, so new patches and script fixes are used (and if `install.sh` itself changed, it restarts
 itself). Then it fetches the latest release of the app and discards local changes in its own build
 folder. Build output is kept, so later builds are faster. Offline, or to skip the pull, use
