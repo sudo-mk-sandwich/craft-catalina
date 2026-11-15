@@ -46,7 +46,7 @@ DESCR=(
   "Word processor"
 )
 # Apps with basic tests on Catalina (start, open and save). Shown in the menu.
-TESTED=" anicraft designcraft filmcraft gridcraft lightcraft pdfcraft photocraft vectorcraft wordcraft "
+TESTED=" anicraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft pdfcraft photocraft vectorcraft wordcraft "
 
 say() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -287,6 +287,17 @@ if [ -f "$CFG" ]; then
   fi
   mkdir -p .cargo
   cp "$CFG" .cargo/config.toml
+fi
+
+# Some apps draw the background of the disk image with resvg (a small tool, installed with cargo).
+if grep -q resvg packaging/macos/package.sh && ! command -v resvg >/dev/null 2>&1; then
+  RV="$(sed -n 's/^RESVG_VERSION=\([0-9][0-9.]*\).*/\1/p' packaging/macos/package.sh | head -n 1)"
+  say "Installing resvg ${RV:-(latest)} (needed for the disk image; takes a few minutes)"
+  if [ -n "$RV" ]; then
+    cargo install resvg --locked --version "$RV" || die "Installing resvg failed (see above)."
+  else
+    cargo install resvg --locked || die "Installing resvg failed (see above)."
+  fi
 fi
 
 say "Building (the first build of an app takes a long time; warnings are normal)"
