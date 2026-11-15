@@ -83,7 +83,7 @@ report test results as an issue.
 | MaterialCraft | none | not tested |
 | PdfCraft | none | basic tests |
 | PhotoCraft | `patches/photocraft.patch` and linker setting: the screen color picker called two system functions from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
-| SoundCraft | linker setting `patches/soundcraft.cargo-config.toml` (same as AniCraft: system-audio capture needs macOS 14.2+) | not tested |
+| SoundCraft | linker setting `patches/soundcraft.cargo-config.toml` (same as AniCraft: system-audio capture needs macOS 14.2+) | basic tests, recording works; system-audio recording not found/not available; double-clicking a `.scraft` file in Finder shows an error, File > Open inside the app works |
 | TextureCraft | none | not tested |
 | VectorCraft | none | basic tests |
 | WordCraft | none | basic tests |
