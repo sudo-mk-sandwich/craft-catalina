@@ -73,7 +73,7 @@ report test results as an issue.
 | AniCraft | linker setting `patches/anicraft.cargo-config.toml` (system-audio capture needs macOS 14.2+; looked up only when used) | basic tests; the in-app menu bar is only visible in full-screen mode (may also happen upstream) |
 | CADCraft | none | not tested |
 | Craft Anything | none | not tested |
-| DeckCraft | none | not tested |
+| DeckCraft | none | basic tests |
 | DesignCraft | none | basic tests |
 | EffectCraft | none | basic tests |
 | FigCraft | none | basic tests |
