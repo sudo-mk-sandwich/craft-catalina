@@ -80,11 +80,11 @@ report test results as an issue.
 | FilmCraft | none | basic tests |
 | GridCraft | none | basic tests |
 | LightCraft | none | basic tests; the first start hung once and worked after quitting the app and starting it again |
-| MailCraft | none (built from UCS-Care-Group/mailcraft; see note below) | not tested |
+| MailCraft | none (built from UCS-Care-Group/mailcraft; see note below) | starts and runs; no mail account set up, mail functions not tested |
 | MaterialCraft | none | basic tests; double-click issue (see below) |
 | PdfCraft | none | basic tests |
 | PhotoCraft | `patches/photocraft.patch` and linker setting: the screen color picker called two system functions from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
-| SolidCraft | none (built from tangency-labs/solidcraft; local build only, see note below) | not tested |
+| SolidCraft | none (built from tangency-labs/solidcraft; see note below) | basic tests |
 | SoundCraft | linker setting `patches/soundcraft.cargo-config.toml` (same as AniCraft: system-audio capture needs macOS 14.2+) | basic tests, recording works; system-audio recording is not available; double-click issue (see below) |
 | TextureCraft | none | basic tests; double-click issue (see below) |
 | VectorCraft | none | basic tests |
@@ -106,8 +106,7 @@ that are hard to predict.
 **MailCraft and SolidCraft** belong to the Craft family but are not made by the storytold account:
 MailCraft comes from [UCS-Care-Group/mailcraft](https://github.com/UCS-Care-Group/mailcraft),
 SolidCraft from [tangency-labs/solidcraft](https://github.com/tangency-labs/solidcraft). The script
-builds them the same way. Both are new here and **not tested yet**; an app may need a patch before
-it links on Catalina. A source build of MailCraft has no Google sign-in (the project injects that
+builds them the same way. A source build of MailCraft has no Google sign-in (the project injects that
 registration only into its own releases); other account types are not affected by this.
 SolidCraft's brand, look and name are licensed separately (`LICENSE-BRAND`): building it for
 yourself is allowed, but distributing a build under the SolidCraft name needs the maintainers'
@@ -132,6 +131,10 @@ not that it runs on Catalina; test the result on a real Catalina Mac.
   (`git checkout -- <file>`) and run the script again.
 - **`Undefined symbols ...` while linking:** the app calls a system function Catalina does not
   have. That needs a patch for this app; please open an issue with the last 30 lines of the output.
+- **The app is built, but "creating the disk image" fails** (for example SolidCraft: `Could not find
+  a version that satisfies the requirement dmgbuild`): the disk image needs a newer Python than
+  Catalina has. The script treats this as success: the app is in the folder that opens, the disk
+  image is not needed.
 - **`ld: framework not found ...`:** the app links a framework that Catalina does not have. Please
   open an issue (Craft Anything solves this with a placeholder, see `patches/`).
 - **`patches/<app>.patch does not apply`:** the app changed the code the patch touches. Please open
