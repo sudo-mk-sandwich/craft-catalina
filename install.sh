@@ -276,17 +276,23 @@ if [ -f "$PATCH" ]; then
   say "Applying patches/$APP.patch"
   git apply "$PATCH" || die "patches/$APP.patch does not apply to $REF. The app changed the code the patch touches; the patch needs an update. Please open an issue."
 else
-  echo "No patch for $APP; building with the version change only."
+  echo "No source patch for $APP; building with the version change only."
 fi
 
 CFG="$SCRIPT_DIR/patches/$APP.cargo-config.toml"
 if [ -f "$CFG" ]; then
   say "Adding linker settings from patches/$APP.cargo-config.toml"
-  if [ -n "$(git ls-files .cargo)" ]; then
-    die "$APP already has a .cargo folder; merge $CFG into .cargo/config.toml by hand."
-  fi
   mkdir -p .cargo
-  cp "$CFG" .cargo/config.toml
+  if [ -f .cargo/config.toml ]; then
+    # The app has its own cargo config (for example an alias): add ours after it.
+    if grep -q 'target.x86_64-apple-darwin' .cargo/config.toml; then
+      die "$APP already sets x86_64-apple-darwin options in .cargo/config.toml; merge $CFG into it by hand."
+    fi
+    { cat .cargo/config.toml; echo; cat "$CFG"; } > .cargo/config.toml.new
+    mv .cargo/config.toml.new .cargo/config.toml
+  else
+    cp "$CFG" .cargo/config.toml
+  fi
 fi
 
 # Some apps draw the background of the disk image with resvg (a small tool, installed with cargo).
