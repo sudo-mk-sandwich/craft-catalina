@@ -1,0 +1,18 @@
+# Used by install.sh only (copied to .cargo/config.toml of the app before the build).
+# The two paths in rustflags are filled in by install.sh (it builds the files they point to).
+#
+# Craft Anything (through its screen capture library xcap) needs two things that the macOS 10.15
+# SDK does not have:
+#
+# 1. The framework AVFAudio. install.sh builds an empty placeholder (patches/craft-anything.stub-frameworks)
+#    so that the linker is satisfied; -dead_strip_dylibs removes it from the finished program again.
+# 2. The function CGPreflightScreenCaptureAccess (macOS 11+). patches/craft-anything.shim.c provides it:
+#    it calls the real one where it exists and otherwise answers "allowed".
+#
+# The GitHub workflow does not need this file: its runner has a newer SDK.
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C", "link-arg=-Wl,-dead_strip_dylibs",
+  "-C", "link-arg=-F@STUBS_DIR@",
+  "-C", "link-arg=@SHIM_OBJ@",
+]
