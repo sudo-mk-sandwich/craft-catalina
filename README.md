@@ -72,7 +72,7 @@ report test results as an issue.
 |---|---|---|
 | AniCraft | linker setting `patches/anicraft.cargo-config.toml` (system-audio capture needs macOS 14.2+; looked up only when used) | basic tests; the in-app menu bar is only visible in full-screen mode (may also happen upstream) |
 | CADCraft | none | basic tests; double-click issue (see below) |
-| Craft Anything | none | not tested |
+| Craft Anything | `patches/craft-anything.*`: placeholder for the missing framework AVFAudio and a replacement for `CGPreflightScreenCaptureAccess` (see below) | builds and starts; **experimental** |
 | DeckCraft | none | basic tests |
 | DesignCraft | none | basic tests |
 | EffectCraft | none | basic tests |
@@ -94,6 +94,13 @@ Opening the same file with **File > Open** inside the app works. This is probabl
 apps themselves (the apps are still in alpha), not of the Catalina build; it has not been compared
 with a newer macOS.
 
+**Craft Anything is experimental on Catalina.** It is a tool that inspects and controls other
+apps and uses system functions that do not exist on macOS 10.15. To make it build, the script adds a
+placeholder for the missing framework `AVFAudio` and a small replacement for
+`CGPreflightScreenCaptureAccess` (screen recording permission check, macOS 11+; on Catalina it
+answers "allowed"). Functions that need newer system features may be missing or may fail in ways
+that are hard to predict.
+
 ## Build on GitHub (no Mac needed)
 
 1. Fork this repository.
@@ -112,6 +119,8 @@ not that it runs on Catalina; test the result on a real Catalina Mac.
   (`git checkout -- <file>`) and run the script again.
 - **`Undefined symbols ...` while linking:** the app calls a system function Catalina does not
   have. That needs a patch for this app; please open an issue with the last 30 lines of the output.
+- **`ld: framework not found ...`:** the app links a framework that Catalina does not have. Please
+  open an issue (Craft Anything solves this with a placeholder, see `patches/`).
 - **`patches/<app>.patch does not apply`:** the app changed the code the patch touches. Please open
   an issue; build an older release meanwhile with `CRAFT_REF=<tag>`.
 - **`MACOSX_DEPLOYMENT_TARGET is not 10.15 ... after the change`:** upstream changed the lines the
