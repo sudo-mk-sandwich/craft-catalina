@@ -72,7 +72,7 @@ report test results as an issue.
 |---|---|---|
 | AniCraft | linker setting `patches/anicraft.cargo-config.toml` (system-audio capture needs macOS 14.2+; looked up only when used) | basic tests; the in-app menu bar is only visible in full-screen mode (may also happen upstream) |
 | CADCraft | none | basic tests; double-click issue (see below) |
-| Craft Anything | `patches/craft-anything.*`: placeholder for the missing framework AVFAudio and a replacement for `CGPreflightScreenCaptureAccess` (see below) | builds and starts; **experimental** |
+| Craft Anything | `patches/craft-anything.*`: placeholder for the missing framework AVFAudio and a replacement for `CGPreflightScreenCaptureAccess` (see below) | builds and starts; **experimental**. Functions not tested (it needs a connected AI agent) |
 | DeckCraft | none | basic tests |
 | DesignCraft | none | basic tests |
 | EffectCraft | none | basic tests |
@@ -80,9 +80,11 @@ report test results as an issue.
 | FilmCraft | none | basic tests |
 | GridCraft | none | basic tests |
 | LightCraft | none | basic tests; the first start hung once and worked after quitting the app and starting it again |
+| MailCraft | none (built from UCS-Care-Group/mailcraft; see note below) | not tested |
 | MaterialCraft | none | basic tests; double-click issue (see below) |
 | PdfCraft | none | basic tests |
 | PhotoCraft | `patches/photocraft.patch` and linker setting: the screen color picker called two system functions from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
+| SolidCraft | none (built from tangency-labs/solidcraft; local build only, see note below) | not tested |
 | SoundCraft | linker setting `patches/soundcraft.cargo-config.toml` (same as AniCraft: system-audio capture needs macOS 14.2+) | basic tests, recording works; system-audio recording is not available; double-click issue (see below) |
 | TextureCraft | none | basic tests; double-click issue (see below) |
 | VectorCraft | none | basic tests |
@@ -100,6 +102,17 @@ placeholder for the missing framework `AVFAudio` and a small replacement for
 `CGPreflightScreenCaptureAccess` (screen recording permission check, macOS 11+; on Catalina it
 answers "allowed"). Functions that need newer system features may be missing or may fail in ways
 that are hard to predict.
+
+**MailCraft and SolidCraft** belong to the Craft family but are not made by the storytold account:
+MailCraft comes from [UCS-Care-Group/mailcraft](https://github.com/UCS-Care-Group/mailcraft),
+SolidCraft from [tangency-labs/solidcraft](https://github.com/tangency-labs/solidcraft). The script
+builds them the same way. Both are new here and **not tested yet**; an app may need a patch before
+it links on Catalina. A source build of MailCraft has no Google sign-in (the project injects that
+registration only into its own releases); other account types are not affected by this.
+SolidCraft's brand, look and name are licensed separately (`LICENSE-BRAND`): building it for
+yourself is allowed, but distributing a build under the SolidCraft name needs the maintainers'
+written permission. So please build SolidCraft **on your own Mac or in your own fork** and do not
+pass the result on.
 
 ## Build on GitHub (no Mac needed)
 
