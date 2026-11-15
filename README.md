@@ -71,7 +71,7 @@ report test results as an issue.
 | App | Patch | Tested on Catalina |
 |---|---|---|
 | AniCraft | linker setting `patches/anicraft.cargo-config.toml` (system-audio capture needs macOS 14.2+; looked up only when used) | basic tests; the in-app menu bar is only visible in full-screen mode (may also happen upstream) |
-| CADCraft | none | not tested |
+| CADCraft | none | basic tests; double-click issue (see below) |
 | Craft Anything | none | not tested |
 | DeckCraft | none | basic tests |
 | DesignCraft | none | basic tests |
@@ -80,13 +80,19 @@ report test results as an issue.
 | FilmCraft | none | basic tests |
 | GridCraft | none | basic tests |
 | LightCraft | none | basic tests; the first start hung once and worked after quitting the app and starting it again |
-| MaterialCraft | none | not tested |
+| MaterialCraft | none | basic tests; double-click issue (see below) |
 | PdfCraft | none | basic tests |
 | PhotoCraft | `patches/photocraft.patch` and linker setting: the screen color picker called two system functions from macOS 11 and crashed on 10.15; the patch skips them there | basic tests, screen color picker |
-| SoundCraft | linker setting `patches/soundcraft.cargo-config.toml` (same as AniCraft: system-audio capture needs macOS 14.2+) | basic tests, recording works; system-audio recording not found/not available; double-clicking a `.scraft` file in Finder shows an error, File > Open inside the app works |
-| TextureCraft | none | not tested |
+| SoundCraft | linker setting `patches/soundcraft.cargo-config.toml` (same as AniCraft: system-audio capture needs macOS 14.2+) | basic tests, recording works; system-audio recording is not available; double-click issue (see below) |
+| TextureCraft | none | basic tests; double-click issue (see below) |
 | VectorCraft | none | basic tests |
 | WordCraft | none | basic tests |
+
+**Double-clicking files in Finder:** in SoundCraft, CADCraft, TextureCraft and MaterialCraft the app
+starts but shows "The document ... could not be opened. ... cannot open files in the ... format".
+Opening the same file with **File > Open** inside the app works. This is probably a bug of the
+apps themselves (the apps are still in alpha), not of the Catalina build; it has not been compared
+with a newer macOS.
 
 ## Build on GitHub (no Mac needed)
 
