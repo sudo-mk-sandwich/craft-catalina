@@ -25,7 +25,7 @@ WORK="${CRAFT_BUILD_DIR:-$HOME/craft-build}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SELF="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 
-APPS=(anicraft cadcraft craft-anything deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft materialcraft pdfcraft photocraft soundcraft texturecraft vectorcraft wordcraft)
+APPS=(anicraft cadcraft craft-anything deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft mailcraft materialcraft pdfcraft photocraft solidcraft soundcraft texturecraft vectorcraft wordcraft)
 DESCR=(
   "2D vector animation"
   "CAD and drafting"
@@ -37,9 +37,11 @@ DESCR=(
   "Video editing"
   "Spreadsheets and data analysis"
   "Photo library and RAW developer"
+  "Mail, calendar, contacts and tasks (other authors)"
   "Procedural materials"
   "PDF tool"
   "Image editing"
+  "3D CAD (other authors)"
   "Digital audio workstation"
   "3D texture painting"
   "Vector illustration"
@@ -157,11 +159,20 @@ ensure_rust() {
 }
 
 # ---- sources -----------------------------------------------------------------------------------
+repo_url() { # repo_url <name>: two apps of the suite live outside the storytold account
+  case "$1" in
+    mailcraft) printf '%s' "${CRAFT_MAILCRAFT_URL:-https://github.com/UCS-Care-Group/mailcraft.git}" ;;
+    solidcraft) printf '%s' "${CRAFT_SOLIDCRAFT_URL:-https://github.com/tangency-labs/solidcraft.git}" ;;
+    *) printf '%s/%s.git' "$GIT_BASE" "$1" ;;
+  esac
+}
+
 sync_repo() { # sync_repo <name>  (clone or update, no checkout of a tag)
-  local name="$1"
+  local name="$1" url
+  url="$(repo_url "$name")"
   if [ ! -d "$WORK/$name/.git" ]; then
     say "Cloning $name"
-    git clone "$GIT_BASE/$name.git" "$WORK/$name" || die "cloning $GIT_BASE/$name.git failed. Is the repository name right, and is the network up?"
+    git clone "$url" "$WORK/$name" || die "cloning $url failed. Is the repository name right, and is the network up?"
   fi
 }
 
@@ -263,13 +274,18 @@ fi
 say "Building $APP at $REF ($(git log -1 --format=%h))"
 
 [ -f packaging/macos/package.sh ] || die "packaging/macos/package.sh not found in $APP; this app is built differently and needs its own handling."
-[ -f packaging/macos/Info.plist.in ] || die "packaging/macos/Info.plist.in not found in $APP; this app is built differently and needs its own handling."
+# Where the Info.plist template lives depends on the app.
+PLIST=""
+for p in packaging/macos/Info.plist.in assets/platforms/macos/Info.plist.in; do
+  if [ -z "$PLIST" ] && [ -f "$p" ]; then PLIST="$p"; fi
+done
+[ -n "$PLIST" ] || die "No Info.plist.in found in $APP; this app is built differently and needs its own handling."
 
 say "Lowering the minimum macOS version to 10.15"
 perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
-perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' packaging/macos/Info.plist.in
+perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' "$PLIST"
 grep -q 'MACOSX_DEPLOYMENT_TARGET=10.15' packaging/macos/package.sh || die "MACOSX_DEPLOYMENT_TARGET is not 10.15 in package.sh after the change. Upstream may have changed that line; look at it with: grep -n MACOSX_DEPLOYMENT_TARGET $APPDIR/packaging/macos/package.sh"
-grep -A1 'LSMinimumSystemVersion' packaging/macos/Info.plist.in | grep -q '<string>10.15</string>' || die "LSMinimumSystemVersion is not 10.15 in Info.plist.in after the change. Upstream may have changed that line."
+grep -A1 'LSMinimumSystemVersion' "$PLIST" | grep -q '<string>10.15</string>' || die "LSMinimumSystemVersion is not 10.15 in Info.plist.in after the change. Upstream may have changed that line."
 
 PATCH="$SCRIPT_DIR/patches/$APP.patch"
 if [ -f "$PATCH" ]; then
