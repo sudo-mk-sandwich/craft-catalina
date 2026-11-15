@@ -165,7 +165,7 @@ git checkout "$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | he
 perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
 perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' packaging/macos/Info.plist.in
 git apply ../craft-catalina/patches/wordcraft.patch
-CRAFT_I18N_DIR="$PWD/../craft-i18n" ./packaging/macos/package.sh --arch x86_64
+CRAFT_I18N_DIR="$PWD/../craft-i18n" bash ./packaging/macos/package.sh --arch x86_64
 open target/macos-package
 ```
 
