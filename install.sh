@@ -270,7 +270,7 @@ action_list_apps() {
   while [ "$i" -lt "${#APPS[@]}" ]; do
     t=0
     case "$TESTED" in *" ${APPS[$i]} "*) t=1 ;; esac
-    printf '@@APP\t%s\t%s\t%s\n' "${APPS[$i]}" "$t" "${DESCR[$i]}"
+    printf '@@APP\t%s\t%s\t%s\n' "${APPS[$i]}" "$t" "${DESCR[$i]}" || return 0
     i=$((i + 1))
   done
 }
