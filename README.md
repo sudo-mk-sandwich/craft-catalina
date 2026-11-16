@@ -12,9 +12,30 @@ do not need this project.
 
 ## Install
 
-Type this into the **Terminal** app (Applications > Utilities > Terminal). You need macOS 10.15, an
-internet connection and several GB of free disk space. The first build of an app takes a long time
-(30 minutes or more); the script builds **one app per run**.
+You need macOS 10.15 on an Intel Mac, an internet connection and several GB of free disk space.
+The first build of an app takes a long time (30 minutes or more); one app is built at a time.
+
+### Option 1: Craftalina (recommended, no Terminal)
+
+Craftalina is an unofficial small window around `install.sh`. It contains **only the window, no Craft
+app**.
+
+1. Download the newest `Craftalina-<version>-macos10.15-x86_64.zip` from the
+   [Releases page](https://github.com/sudo-mk-sandwich/craft-catalina/releases), unzip it and drag
+   **Craftalina** into your Applications folder.
+2. Open it the first time with **right-click > Open**. If macOS still blocks it: System Preferences >
+   Security & Privacy > General > Open Anyway (the app is not notarized by Apple).
+3. The window checks what is needed (developer tools, Rust) and installs missing parts on a click.
+   Pick an app, press **Build**, wait. At the end it offers to copy the app to your Applications
+   folder (replacing an older version) and to keep or delete the sources.
+
+At every start Craftalina downloads the newest `install.sh` and patches from this repository
+(internet needed; without it the copy from the last start is used), so you do not need a new
+Craftalina when a patch changes. English and German.
+
+### Option 2: Terminal (manual)
+
+Type this into the **Terminal** app (Applications > Utilities > Terminal):
 
 ```
 git clone https://github.com/sudo-mk-sandwich/craft-catalina.git
@@ -30,20 +51,6 @@ missing tools (it asks before installing Rust), builds the latest stable release
 Catalina changes, stops at the first error, and finally opens the folder with the finished app.
 Drag the app into your Applications folder and open it the first time with **right-click > Open**.
 
-## Update
-
-The apps' own automatic in-app updates do **not** work with these builds. To update an app, run
-the script again. The three commands above are needed only once; afterwards:
-
-```
-cd craft-catalina
-bash install.sh
-```
-
-(`cd` is relative to the folder where you ran `git clone`, usually your home folder.) The script
-first pulls new patches and script fixes (`git pull`), then builds the latest release of the app
-you choose.
-
 Variants:
 
 ```
@@ -53,34 +60,21 @@ CRAFT_BUILD_DIR=/Volumes/Big/craft bash install.sh   # build somewhere else
 CRAFT_NO_UPDATE=1 bash install.sh                # skip the git pull (offline)
 ```
 
-## Craftalina (a window instead of the Terminal)
+## Update
 
-Craftalina is an unofficial, small graphical front end for `install.sh`. It checks what is needed
-(developer tools, Rust) and installs it on a click, lets you pick an app, builds it with a progress
-window, and at the end offers to copy the app to your Applications folder (replacing an older
-version) and to delete or keep the sources. It does everything by calling `install.sh`, so both
-always behave the same. English and German.
+The apps' own automatic in-app updates do **not** work with these builds. Update with this project
+instead:
 
-Apps that are already in your Applications folder are marked with their version. Craftalina
-compares it with the newest stable version on GitHub and shows **Update: 0.18.1 -> 0.19.0** when
-there is a newer one (the button then says Update). The check needs internet and is skipped quietly
-without it.
+- **Craftalina:** apps in your Applications folder are marked with their version. Craftalina compares
+  it with the newest stable version on GitHub and shows **Update: 0.18.1 -> 0.19.0** when there is a
+  newer one (the button then says Update). The check needs internet and is skipped quietly without it.
+- **Terminal:** the three commands above are needed only once; afterwards
+  `cd craft-catalina` and `bash install.sh` is enough (`cd` is relative to the folder where you ran
+  `git clone`, usually your home folder). The script first pulls new patches and script fixes
+  (`git pull`), then builds the latest release of the app you choose.
 
-**Download:** the newest `Craftalina-<version>-macos10.15-x86_64.zip` is on the
-[Releases page](https://github.com/sudo-mk-sandwich/craft-catalina/releases). It contains only the
-window, no Craft app. Unzip it, drag **Craftalina** into Applications and open it the first time with
-**right-click > Open** (the app is not notarized by Apple). At every start it downloads the newest
-`install.sh` and patches from this repository (internet needed; without it, the copy from the last
-start is used), so you do not have to download a new Craftalina when a patch changes. Checksum: the
-`.sha256` file next to the zip.
-
-Or start it from the source (needs Rust, see the first steps of "Build by hand" below), in the
-`craft-catalina` folder:
-
-```
-cd app
-cargo run --release
-```
+Developers can also start Craftalina from the source (needs Rust, see "Build by hand" below):
+`cd app && cargo run --release`.
 
 ## What is changed
 
