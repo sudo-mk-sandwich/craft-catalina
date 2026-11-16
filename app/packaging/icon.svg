@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b3a8f"/>
+      <stop offset="1" stop-color="#12b3a6"/>
+    </linearGradient>
+  </defs>
+  <!-- Original artwork for Craftalina: a rounded square, an open ring ("C") and a small amber spark. -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <path d="M 700 330 A 260 260 0 1 0 700 694" fill="none" stroke="#ffffff" stroke-width="96" stroke-linecap="round"/>
+  <path d="M 640 512 L 700 452 L 760 512 L 700 572 Z" fill="#ffb21e"/>
+</svg>

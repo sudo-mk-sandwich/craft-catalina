@@ -4,6 +4,7 @@
 //! (Unofficial community tool, not affiliated with the authors of the apps.)
 
 mod backend;
+mod bootstrap;
 mod i18n;
 mod model;
 
@@ -75,6 +76,8 @@ struct Builder {
     cancelled_notice: bool,
     lang: Lang,
     script: Option<PathBuf>,
+    preparing: bool,
+    prep_rx: Receiver<Option<PathBuf>>,
     ctx: egui::Context,
     tx: Sender<Event>,
     rx: Receiver<Event>,
@@ -97,14 +100,25 @@ impl Builder {
             }
         });
         let (tx, rx) = channel();
-        let mut b = Builder {
+        let (prep_tx, prep_rx) = channel();
+        {
+            // Getting the newest install.sh can take a moment (download), so it runs on a thread.
+            let ctx = ctx.clone();
+            std::thread::spawn(move || {
+                let _ = prep_tx.send(bootstrap::prepare());
+                ctx.request_repaint();
+            });
+        }
+        let b = Builder {
             screen: Screen::Select,
             build: None,
             result: None,
             show_log: false,
             cancelled_notice: false,
             lang: Lang::detect(),
-            script: backend::find_script(),
+            script: None,
+            preparing: true,
+            prep_rx,
             ctx: ctx.clone(),
             tx,
             rx,
@@ -124,13 +138,22 @@ impl Builder {
             last_line: String::new(),
             next_poll: None,
         };
-        b.start(TaskKind::ListApps, &["--list-apps"]);
-        b.start_check();
+        b
+    }
+
+    /// Called when the script is known: loads the app list and checks the requirements.
+    fn script_ready(&mut self, script: Option<PathBuf>) {
+        self.preparing = false;
+        self.script = script;
+        if self.script.is_none() {
+            return;
+        }
+        self.start(TaskKind::ListApps, &["--list-apps"]);
+        self.start_check();
         // For tests only: start a build without clicking.
         if let Ok(app) = std::env::var("CRAFTALINA_AUTOSTART") {
-            b.start_build(&app);
+            self.start_build(&app);
         }
-        b
     }
 
     fn start(&self, kind: TaskKind, args: &[&str]) -> Option<PidHandle> {
@@ -721,6 +744,11 @@ impl Builder {
 
 impl eframe::App for Builder {
     fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if self.preparing {
+            if let Ok(script) = self.prep_rx.try_recv() {
+                self.script_ready(script);
+            }
+        }
         self.drain_events();
         self.poll_tools();
         let l = self.lang;
@@ -782,6 +810,14 @@ impl eframe::App for Builder {
             ui.label(RichText::new(t(l, K::Subtitle)).weak());
             ui.add_space(8.0);
 
+            if self.preparing {
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(t(l, K::Preparing));
+                });
+                return;
+            }
             if self.script.is_none() {
                 ui.separator();
                 ui.colored_label(RED, t(l, K::ScriptMissingTitle));
