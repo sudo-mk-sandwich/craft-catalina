@@ -1,0 +1,122 @@
+name: Release Craftalina
+
+# Builds ONLY Craftalina (the small window in app/) for Intel Macs with macOS 10.15 or newer and,
+# if asked, publishes it on the Releases page. It builds and publishes no Craft app and contains
+# no source code of the Craft apps: the apps are built later on the user's own Mac.
+#
+# Start manually: Actions > Release Craftalina > Run workflow.
+#   publish = false  ->  only builds; the zip is attached to the run (Artifacts) for a test.
+#   publish = true   ->  also creates the release "craftalina-v<version>" with the zip + checksum.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, digits and dots only (for example 0.1.0)"
+        required: true
+        default: "0.1.0"
+      publish:
+        description: "Publish on the Releases page (false = only build and attach to this run)"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Apple Silicon runner; the Intel binary is cross-compiled (target x86_64-apple-darwin).
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "10.15"
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check the version
+        run: |
+          case "$VERSION" in
+            ''|*[!0-9.]*|.*|*.) echo "Bad version: '$VERSION' (digits and dots only)"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain for Intel
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add x86_64-apple-darwin
+          rustc --version
+
+      - name: Test
+        working-directory: app
+        run: cargo test --locked --release
+
+      - name: Build (Intel, macOS 10.15)
+        working-directory: app
+        run: cargo build --locked --release --target x86_64-apple-darwin
+
+      - name: Check the binary
+        run: |
+          BIN=app/target/x86_64-apple-darwin/release/craftalina
+          file "$BIN"
+          lipo -archs "$BIN" | grep -qx x86_64 || { echo "not a pure x86_64 binary"; exit 1; }
+          MINOS="$(otool -l "$BIN" | awk '/LC_BUILD_VERSION/{f=1} f && /minos/{print $2; exit}')"
+          if [ -z "$MINOS" ]; then
+            MINOS="$(otool -l "$BIN" | awk '/LC_VERSION_MIN_MACOSX/{f=1} f && /version/{print $2; exit}')"
+          fi
+          echo "minimum macOS: $MINOS"
+          [ "$MINOS" = "10.15" ] || { echo "expected minimum macOS 10.15"; exit 1; }
+          echo "--- linked libraries ---"
+          otool -L "$BIN"
+          # Frameworks that do not exist on 10.15 would stop the app at launch.
+          if otool -L "$BIN" | grep -E 'UniformTypeIdentifiers|SwiftUI|ScreenCaptureKit|Symbols\.framework'; then
+            echo "links a framework newer than macOS 10.15"; exit 1
+          fi
+
+      - name: Make Craftalina.app and the zip
+        run: |
+          mkdir -p dist
+          bash app/packaging/make-app.sh app/target/x86_64-apple-darwin/release/craftalina "$VERSION" dist
+          ZIP="Craftalina-$VERSION-macos10.15-x86_64.zip"
+          ( cd dist && ditto -c -k --keepParent Craftalina.app "$ZIP" && shasum -a 256 "$ZIP" > "$ZIP.sha256" )
+          cat "dist/$ZIP.sha256"
+          # Unpack once more and check that the app survived the zip.
+          rm -rf verify && mkdir verify && ditto -x -k "dist/$ZIP" verify
+          codesign --verify --deep --strict verify/Craftalina.app
+          test -x verify/Craftalina.app/Contents/MacOS/craftalina
+          test -f verify/Craftalina.app/Contents/Resources/install.sh
+          test -d verify/Craftalina.app/Contents/Resources/patches
+          test -f verify/Craftalina.app/Contents/Resources/Craftalina.icns
+
+      - name: Release text
+        run: |
+          ZIP="Craftalina-$VERSION-macos10.15-x86_64.zip"
+          SUM="$(cut -d' ' -f1 "dist/$ZIP.sha256")"
+          sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHA256@/$SUM/g" app/packaging/release-notes.md > dist/notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: craftalina-${{ inputs.version }}
+          path: |
+            dist/Craftalina-*.zip
+            dist/Craftalina-*.zip.sha256
+            dist/notes.md
+
+      - name: Publish release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="craftalina-v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists already. Choose a new version."; exit 1
+          fi
+          gh release create "$TAG" \
+            "dist/Craftalina-$VERSION-macos10.15-x86_64.zip" \
+            "dist/Craftalina-$VERSION-macos10.15-x86_64.zip.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "Craftalina $VERSION" \
+            --notes-file dist/notes.md
