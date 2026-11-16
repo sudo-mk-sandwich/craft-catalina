@@ -150,6 +150,9 @@ not that it runs on Catalina; test the result on a real Catalina Mac.
 
 ## Troubleshooting
 
+
+**The app builds but does not start in a virtual machine** with "No suitable graphics adapter found": the Craft apps draw with Metal, and most virtual machines (VirtualBox, VMware, Parallels on old macOS guests) offer no Metal graphics. Run them on a real Mac.
+
 - **The pull fails:** you created or changed a file in this folder by hand that now exists in this
   repository. Delete your copy (`rm patches/<file>`) or undo the change
   (`git checkout -- <file>`) and run the script again.
