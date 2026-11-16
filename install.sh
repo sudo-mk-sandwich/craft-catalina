@@ -4,6 +4,17 @@
 #   bash install.sh              pick the app in a menu (arrow keys, Enter)
 #   bash install.sh wordcraft    build that app directly
 #
+# For programs that drive this script (such as a graphical front end) there are also actions that
+# print machine-readable lines starting with "@@" and never ask questions:
+#   --list-apps            @@APP <name> <tested 0|1> <description>   (tab separated)
+#   --check                @@CHECK tools|rust|target|disk|arch|macos <status> [detail]
+#   --install-tools        opens Apple's installer for the developer tools
+#   --install-rust         installs Rust (official installer, no sudo) and the Intel target
+#   --machine --build APP  build one app; progress as @@STEP, result as @@DONE <app> or @@ERROR <text>
+#   --info APP             @@APP_PATH, @@BUILT_VERSION, @@SIZE_KB, @@INSTALLED yes|no [path]
+#   --copy APP             copy the built app to /Applications (replaces an older copy)
+#   --clean APP            delete the sources and build output of APP (@@CLEANED <KB>)
+#
 # What it does: first updates itself and the patches (git pull in the folder it lives in), then
 # checks Apple developer tools and Rust (installs Rust after asking), clones the app
 # and craft-i18n (translations) into ~/craft-build, checks out the latest stable release tag,
@@ -15,6 +26,7 @@
 #   CRAFT_REF         build this tag or branch instead of the latest stable tag
 #   CRAFT_GIT_BASE    where the repositories are cloned from (default https://github.com/storytold)
 #   CRAFT_NO_UPDATE   set to 1 to skip the git pull of this script's own repository (offline use)
+#   CRAFT_APPLICATIONS_DIR  where --copy puts the app (default /Applications)
 #
 # Written for the bash 3.2 that ships with macOS 10.15: no associative arrays, no mapfile.
 set -eu
@@ -50,9 +62,15 @@ DESCR=(
 # Apps with basic tests on Catalina (start, open and save). Shown in the menu.
 TESTED=" anicraft cadcraft deckcraft designcraft effectcraft figcraft filmcraft gridcraft lightcraft materialcraft pdfcraft photocraft solidcraft soundcraft texturecraft vectorcraft wordcraft "
 
-say() { printf '\n==> %s\n' "$*"; }
-warn() { printf 'warning: %s\n' "$*" >&2; }
-die() { printf '\nerror: %s\n' "$*" >&2; exit 1; }
+MACHINE=0
+emit() { printf '@@%s\n' "$*"; }
+say() { printf '\n==> %s\n' "$*"; if [ "$MACHINE" = 1 ]; then emit "STEP $*"; fi; }
+warn() { printf 'warning: %s\n' "$*" >&2; if [ "$MACHINE" = 1 ]; then emit "WARN $*"; fi; }
+die() {
+  printf '\nerror: %s\n' "$*" >&2
+  if [ "$MACHINE" = 1 ]; then emit "ERROR $(printf '%s' "$*" | head -n 1)"; fi
+  exit 1
+}
 cursor_on() { if [ -t 1 ]; then printf '\033[?25h'; fi; }
 trap cursor_on EXIT
 trap 'cursor_on; printf "\n"; exit 130' INT
@@ -134,6 +152,7 @@ ensure_dev_tools() {
     say "Apple developer tools: found (SDK $(xcrun --show-sdk-version))"
     return
   fi
+  if [ "$MACHINE" = 1 ]; then die "The Apple developer tools are missing."; fi
   say "Apple developer tools are missing"
   echo "A window will open; click Install and wait until it is finished."
   xcode-select --install || true
@@ -145,6 +164,7 @@ ensure_rust() {
   if command -v cargo >/dev/null 2>&1 && command -v rustup >/dev/null 2>&1; then
     say "Rust: found ($(cargo --version))"
   else
+    if [ "$MACHINE" = 1 ]; then die "Rust is missing."; fi
     say "Rust is not installed"
     echo "Rust is needed to build the apps. It will be installed with the official installer from"
     echo "https://sh.rustup.rs (into ~/.cargo and ~/.rustup, default settings, no sudo)."
@@ -187,6 +207,13 @@ pick_ref() { # prints the ref to build: CRAFT_REF, else latest stable v* tag, el
 }
 
 die_build() {
+  if [ "$MACHINE" = 1 ]; then
+    emit "LOG $LOG"
+    if grep -q 'Undefined symbols' "$LOG" 2>/dev/null; then emit "KIND undefined-symbols"
+    elif grep -q 'framework not found' "$LOG" 2>/dev/null; then emit "KIND framework-not-found"
+    elif grep -q 'does not apply' "$LOG" 2>/dev/null; then emit "KIND patch"
+    else emit "KIND build-failed"; fi
+  fi
   die "The build stopped (see the lines above, usually the first one starting with 'error').
   The sources stay in $APPDIR; run this script again to continue after a fix.
   'Undefined symbols' means the app calls a system function Catalina does not have. That needs a
@@ -223,150 +250,314 @@ self_update() {
   fi
 }
 
+# ---- actions for programs that drive this script ---------------------------------------------
+valid_app() { # valid_app <name>
+  local a
+  for a in "${APPS[@]}"; do if [ "$a" = "$1" ]; then return 0; fi; done
+  return 1
+}
+
+bundle_of() { # bundle_of <app>: the finished .app of that app, if any
+  ls -d "$WORK/$1/target/macos-package/"*.app 2>/dev/null | head -n 1 || true
+}
+
+plist_version() { # plist_version <bundle>
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Contents/Info.plist" 2>/dev/null || true
+}
+
+action_list_apps() {
+  local i=0 t
+  while [ "$i" -lt "${#APPS[@]}" ]; do
+    t=0
+    case "$TESTED" in *" ${APPS[$i]} "*) t=1 ;; esac
+    printf '@@APP\t%s\t%s\t%s\n' "${APPS[$i]}" "$t" "${DESCR[$i]}"
+    i=$((i + 1))
+  done
+}
+
+action_check() {
+  local dir kb gb
+  if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+  if xcode-select -p >/dev/null 2>&1 && xcrun --show-sdk-version >/dev/null 2>&1; then
+    emit "CHECK tools ok $(xcrun --show-sdk-version)"
+  else
+    emit "CHECK tools missing"
+  fi
+  if command -v cargo >/dev/null 2>&1 && command -v rustup >/dev/null 2>&1; then
+    emit "CHECK rust ok $(cargo --version | awk '{print $2}')"
+    if rustup target list --installed 2>/dev/null | grep -q '^x86_64-apple-darwin$'; then
+      emit "CHECK target ok"
+    else
+      emit "CHECK target missing"
+    fi
+  else
+    emit "CHECK rust missing"
+    emit "CHECK target missing"
+  fi
+  dir="$WORK"
+  while [ ! -d "$dir" ] && [ "$dir" != "/" ]; do dir="$(dirname "$dir")"; done
+  kb="$(df -k "$dir" | awk 'NR==2 {print $4}')"
+  case "$kb" in
+    '' | *[!0-9]*) emit "CHECK disk unknown" ;;
+    *)
+      gb=$((kb / 1048576))
+      if [ "$kb" -lt 10485760 ]; then emit "CHECK disk low $gb"; else emit "CHECK disk ok $gb"; fi
+      ;;
+  esac
+  if [ "$(uname -m)" = "x86_64" ]; then emit "CHECK arch intel"; else emit "CHECK arch other"; fi
+  emit "CHECK macos $(sw_vers -productVersion 2>/dev/null || echo unknown)"
+}
+
+action_install_tools() {
+  if xcode-select -p >/dev/null 2>&1 && xcrun --show-sdk-version >/dev/null 2>&1; then
+    emit "INFO The developer tools are already installed."
+    return 0
+  fi
+  xcode-select --install || true
+  emit "INFO Apple's installer window was opened. Click Install and wait until it is finished."
+}
+
+action_install_rust() {
+  if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+  if ! { command -v cargo >/dev/null 2>&1 && command -v rustup >/dev/null 2>&1; }; then
+    say "Installing Rust (official installer from https://sh.rustup.rs, no sudo)"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || die "The Rust installation failed."
+    if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+    command -v cargo >/dev/null 2>&1 || die "cargo was not found after the installation."
+  fi
+  say "Adding the Intel target"
+  rustup target add x86_64-apple-darwin || die "adding the Intel target failed"
+  emit "DONE rust"
+}
+
+action_info() { # action_info <app>
+  local b kb dest
+  b="$(bundle_of "$1")"
+  kb="$(du -sk "$WORK/$1" 2>/dev/null | awk '{print $1}')"
+  emit "SIZE_KB ${kb:-0}"
+  if [ -n "$b" ]; then
+    emit "APP_PATH $b"
+    emit "BUILT_VERSION $(plist_version "$b")"
+    dest="${CRAFT_APPLICATIONS_DIR:-/Applications}/$(basename "$b")"
+    if [ -d "$dest" ]; then
+      emit "INSTALLED yes $dest"
+      emit "INSTALLED_VERSION $(plist_version "$dest")"
+    else
+      emit "INSTALLED no"
+    fi
+  fi
+}
+
+action_copy() { # action_copy <app>
+  local b name destdir dest tmp
+  b="$(bundle_of "$1")"
+  [ -n "$b" ] || die "There is no finished app for $1. Build it first."
+  name="$(basename "$b")"
+  case "$name" in *.app) ;; *) die "unexpected app name: $name" ;; esac
+  destdir="${CRAFT_APPLICATIONS_DIR:-/Applications}"
+  dest="$destdir/$name"
+  if pgrep -f "$dest/Contents/MacOS/" >/dev/null 2>&1; then die "$name is running. Quit it and try again."; fi
+  tmp="$dest.new.$$"
+  rm -rf "$tmp"
+  ditto "$b" "$tmp" || { rm -rf "$tmp"; die "Copying to $destdir failed. Do you have permission to write there?"; }
+  if [ -d "$dest" ]; then rm -rf "$dest" || die "Could not remove the old $name."; fi
+  mv "$tmp" "$dest" || die "Could not move the new $name into place."
+  emit "COPIED $dest"
+}
+
+action_clean() { # action_clean <app>
+  local kb
+  [ -n "$WORK" ] && [ "$WORK" != "/" ] && [ "$WORK" != "$HOME" ] || die "refusing to clean in $WORK"
+  kb="$(du -sk "$WORK/$1" 2>/dev/null | awk '{print $1}')"
+  rm -rf "${WORK:?}/$1" "${WORK:?}/stubs/$1" "${WORK:?}/last-build-$1.log"
+  emit "CLEANED ${kb:-0}"
+}
+
+# ---- build ---------------------------------------------------------------------------------------
+do_build() {
+  if [ "$(uname -m)" != "x86_64" ]; then
+    warn "This Mac is not an Intel Mac. The apps already run on Apple silicon with macOS 11 or newer."
+    if [ "$MACHINE" != 1 ]; then ask "Build an Intel version anyway?" || exit 0; fi
+  fi
+
+  self_update "$@"
+
+  if [ -n "$ARG_APP" ]; then
+    APP="$(printf '%s' "$ARG_APP" | tr 'A-Z' 'a-z')"
+    valid_app "$APP" || die "unknown app: $ARG_APP (valid: ${APPS[*]})"
+  elif [ "$MACHINE" = 1 ]; then
+    die "No app given."
+  else
+    choose_app
+    APP="$CHOSEN"
+  fi
+  say "App: $APP"
+
+  ensure_dev_tools
+  ensure_rust
+
+  mkdir -p "$WORK"
+  avail_kb="$(df -k "$WORK" | awk 'NR==2 {print $4}')"
+  case "$avail_kb" in '' | *[!0-9]*) ;; *) if [ "$avail_kb" -lt 10485760 ]; then warn "less than 10 GB free in $WORK; a build needs several GB"; fi ;; esac
+
+  sync_repo craft-i18n
+  git -C "$WORK/craft-i18n" pull --ff-only || warn "could not update craft-i18n; using the version already there"
+
+  sync_repo "$APP"
+  APPDIR="$WORK/$APP"
+  cd "$APPDIR"
+  git fetch --tags --force origin || die "git fetch failed"
+  # The build folder belongs to this script: discard changes from an earlier run (build output in
+  # target/ is kept so later builds stay fast).
+  git reset --hard -q
+  git clean -fdq -e /target
+
+  REF="$(pick_ref)"
+  [ -n "$REF" ] || die "$APP has no release tag (v*) yet. Name a branch or tag yourself, for example: CRAFT_REF=main bash install.sh $APP"
+  if git rev-parse -q --verify "refs/tags/$REF" >/dev/null; then
+    git checkout -q --detach "refs/tags/$REF" || die "checkout of $REF failed"
+  elif git rev-parse -q --verify "refs/remotes/origin/$REF" >/dev/null; then
+    git checkout -q --detach "refs/remotes/origin/$REF" || die "checkout of $REF failed"
+  else
+    die "ref not found: $REF"
+  fi
+  say "Building $APP at $REF ($(git log -1 --format=%h))"
+
+  [ -f packaging/macos/package.sh ] || die "packaging/macos/package.sh not found in $APP; this app is built differently and needs its own handling."
+  # Where the Info.plist template lives depends on the app.
+  PLIST=""
+  for p in packaging/macos/Info.plist.in assets/platforms/macos/Info.plist.in; do
+    if [ -z "$PLIST" ] && [ -f "$p" ]; then PLIST="$p"; fi
+  done
+  [ -n "$PLIST" ] || die "No Info.plist.in found in $APP; this app is built differently and needs its own handling."
+
+  say "Lowering the minimum macOS version to 10.15"
+  perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
+  perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' "$PLIST"
+  grep -q 'MACOSX_DEPLOYMENT_TARGET=10.15' packaging/macos/package.sh || die "MACOSX_DEPLOYMENT_TARGET is not 10.15 in package.sh after the change. Upstream may have changed that line; look at it with: grep -n MACOSX_DEPLOYMENT_TARGET $APPDIR/packaging/macos/package.sh"
+  grep -A1 'LSMinimumSystemVersion' "$PLIST" | grep -q '<string>10.15</string>' || die "LSMinimumSystemVersion is not 10.15 in Info.plist.in after the change. Upstream may have changed that line."
+
+  PATCH="$SCRIPT_DIR/patches/$APP.patch"
+  if [ -f "$PATCH" ]; then
+    say "Applying patches/$APP.patch"
+    git apply "$PATCH" || die "patches/$APP.patch does not apply to $REF. The app changed the code the patch touches; the patch needs an update. Please open an issue."
+  else
+    echo "No source patch for $APP; building with the version change only."
+  fi
+
+  CFG="$SCRIPT_DIR/patches/$APP.cargo-config.toml"
+  if [ -f "$CFG" ]; then
+    say "Adding linker settings from patches/$APP.cargo-config.toml"
+    STUBS="$WORK/stubs/$APP"
+    mkdir -p "$STUBS"
+    # Optional helpers some apps need (see the comments in the cargo-config file):
+    # a small C file with replacements for system functions Catalina does not have ...
+    SHIMC="$SCRIPT_DIR/patches/$APP.shim.c"
+    if [ -f "$SHIMC" ]; then
+      clang -c -arch x86_64 -mmacosx-version-min=10.15 -o "$STUBS/shim.o" "$SHIMC" || die "Compiling patches/$APP.shim.c failed."
+    fi
+    # ... and empty placeholders for frameworks that only the link step wants to see.
+    FWLIST="$SCRIPT_DIR/patches/$APP.stub-frameworks"
+    if [ -f "$FWLIST" ]; then
+      while IFS= read -r fw || [ -n "$fw" ]; do
+        case "$fw" in ""|*[!A-Za-z0-9]*) continue ;; esac
+        mkdir -p "$STUBS/$fw.framework"
+        printf 'void %s_stub(void) {}\n' "$fw" > "$STUBS/$fw.c"
+        clang -dynamiclib -arch x86_64 -mmacosx-version-min=10.15 \
+          -install_name "/System/Library/Frameworks/$fw.framework/Versions/A/$fw" \
+          -o "$STUBS/$fw.framework/$fw" "$STUBS/$fw.c" || die "Creating the placeholder for the framework $fw failed."
+      done < "$FWLIST"
+    fi
+    sed -e "s|@STUBS_DIR@|$STUBS|g" -e "s|@SHIM_OBJ@|$STUBS/shim.o|g" "$CFG" > "$STUBS/cargo-config.toml"
+    CFG="$STUBS/cargo-config.toml"
+    mkdir -p .cargo
+    if [ -f .cargo/config.toml ]; then
+      # The app has its own cargo config (for example an alias): add ours after it.
+      if grep -q 'target.x86_64-apple-darwin' .cargo/config.toml; then
+        die "$APP already sets x86_64-apple-darwin options in .cargo/config.toml; merge $CFG into it by hand."
+      fi
+      { cat .cargo/config.toml; echo; cat "$CFG"; } > .cargo/config.toml.new
+      mv .cargo/config.toml.new .cargo/config.toml
+    else
+      cp "$CFG" .cargo/config.toml
+    fi
+  fi
+
+  # Some apps draw the background of the disk image with resvg (a small tool, installed with cargo).
+  if grep -q resvg packaging/macos/package.sh && ! command -v resvg >/dev/null 2>&1; then
+    RV="$(sed -n 's/^RESVG_VERSION=\([0-9][0-9.]*\).*/\1/p' packaging/macos/package.sh | head -n 1)"
+    say "Installing resvg ${RV:-(latest)} (needed for the disk image; takes a few minutes)"
+    if [ -n "$RV" ]; then
+      cargo install resvg --locked --version "$RV" || die "Installing resvg failed (see above)."
+    else
+      cargo install resvg --locked || die "Installing resvg failed (see above)."
+    fi
+  fi
+
+  say "Building (the first build of an app takes a long time; warnings are normal)"
+  # "bash" in front: some apps (MailCraft) have the script without the executable flag in git.
+  # The output is also kept in a log file to tell a failed disk image from a failed build.
+  LOG="$WORK/last-build-$APP.log"
+  set +e
+  CRAFT_I18N_DIR="$WORK/craft-i18n" bash ./packaging/macos/package.sh --arch x86_64 2>&1 | tee "$LOG"
+  BUILD_RC="${PIPESTATUS[0]}"
+  set -e
+  if [ "$BUILD_RC" -ne 0 ]; then
+    # The disk image (.dmg) is the very last step, after the app is built, assembled and signed. Some
+    # apps need a newer Python for it than Catalina has. The app itself is then finished and usable.
+    if grep -q '^==> building .*\.dmg' "$LOG" && ls -d "$APPDIR"/target/macos-package/*.app >/dev/null 2>&1; then
+      warn "The app is finished, but the last step (creating the disk image .dmg) failed. The disk image is not needed: use the app from the folder that opens next."
+    else
+      die_build
+    fi
+  fi
+
+  OUT="$(find "$APPDIR/target" -maxdepth 3 -type d -name macos-package 2>/dev/null | head -n 1 || true)"
+  if [ -z "$OUT" ]; then OUT="$APPDIR"; fi
+  DMG="$(find "$APPDIR" -maxdepth 4 -name '*-macos-x86_64.dmg' 2>/dev/null | head -n 1 || true)"
+  BUNDLE="$(ls -d "$OUT"/*.app 2>/dev/null | head -n 1 || true)"
+  say "Done"
+  echo "App folder: $OUT"
+  if [ -n "$DMG" ]; then echo "Disk image: $DMG"; fi
+  if [ "$MACHINE" = 1 ]; then
+    emit "DONE ${BUNDLE:-$OUT}"
+  else
+    echo "Because the app is not signed by Apple, open it the first time with right-click > Open."
+    open "$OUT" || true
+  fi
+}
+
 # ---- main --------------------------------------------------------------------------------------
 [ "$(uname -s)" = "Darwin" ] || die "This script is for macOS."
-if [ "$(uname -m)" != "x86_64" ]; then
-  warn "This Mac is not an Intel Mac. The apps already run on Apple silicon with macOS 11 or newer."
-  ask "Build an Intel version anyway?" || exit 0
-fi
 
-self_update "$@"
-
-if [ "$#" -ge 1 ]; then
-  APP="$(printf '%s' "$1" | tr 'A-Z' 'a-z')"
-  found=0
-  for a in "${APPS[@]}"; do if [ "$a" = "$APP" ]; then found=1; fi; done
-  [ "$found" -eq 1 ] || die "unknown app: $1 (valid: ${APPS[*]})"
-else
-  choose_app
-  APP="$CHOSEN"
-fi
-say "App: $APP"
-
-ensure_dev_tools
-ensure_rust
-
-mkdir -p "$WORK"
-avail_kb="$(df -k "$WORK" | awk 'NR==2 {print $4}')"
-case "$avail_kb" in '' | *[!0-9]*) ;; *) if [ "$avail_kb" -lt 10485760 ]; then warn "less than 10 GB free in $WORK; a build needs several GB"; fi ;; esac
-
-sync_repo craft-i18n
-git -C "$WORK/craft-i18n" pull --ff-only || warn "could not update craft-i18n; using the version already there"
-
-sync_repo "$APP"
-APPDIR="$WORK/$APP"
-cd "$APPDIR"
-git fetch --tags --force origin || die "git fetch failed"
-# The build folder belongs to this script: discard changes from an earlier run (build output in
-# target/ is kept so later builds stay fast).
-git reset --hard -q
-git clean -fdq -e /target
-
-REF="$(pick_ref)"
-[ -n "$REF" ] || die "$APP has no release tag (v*) yet. Name a branch or tag yourself, for example: CRAFT_REF=main bash install.sh $APP"
-if git rev-parse -q --verify "refs/tags/$REF" >/dev/null; then
-  git checkout -q --detach "refs/tags/$REF" || die "checkout of $REF failed"
-elif git rev-parse -q --verify "refs/remotes/origin/$REF" >/dev/null; then
-  git checkout -q --detach "refs/remotes/origin/$REF" || die "checkout of $REF failed"
-else
-  die "ref not found: $REF"
-fi
-say "Building $APP at $REF ($(git log -1 --format=%h))"
-
-[ -f packaging/macos/package.sh ] || die "packaging/macos/package.sh not found in $APP; this app is built differently and needs its own handling."
-# Where the Info.plist template lives depends on the app.
-PLIST=""
-for p in packaging/macos/Info.plist.in assets/platforms/macos/Info.plist.in; do
-  if [ -z "$PLIST" ] && [ -f "$p" ]; then PLIST="$p"; fi
+ACTION="build"
+ARG_APP=""
+for arg in "$@"; do
+  case "$arg" in
+    --machine) MACHINE=1 ;;
+    --build) ACTION="build" ;;
+    --list-apps) ACTION="list-apps" ;;
+    --check) ACTION="check" ;;
+    --install-tools) ACTION="install-tools" ;;
+    --install-rust) ACTION="install-rust" ;;
+    --info) ACTION="info" ;;
+    --copy) ACTION="copy" ;;
+    --clean) ACTION="clean" ;;
+    -h | --help) sed -n '2,/^# Written for/p' "$SELF" | sed 's/^# \{0,1\}//' | grep -v '^Written for'; exit 0 ;;
+    -*) die "unknown option: $arg" ;;
+    *) ARG_APP="$arg" ;;
+  esac
 done
-[ -n "$PLIST" ] || die "No Info.plist.in found in $APP; this app is built differently and needs its own handling."
 
-say "Lowering the minimum macOS version to 10.15"
-perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET=11\.0/MACOSX_DEPLOYMENT_TARGET=10.15/' packaging/macos/package.sh
-perl -0pi -e 's|(LSMinimumSystemVersion</key>\s*<string>)11\.0|${1}10.15|' "$PLIST"
-grep -q 'MACOSX_DEPLOYMENT_TARGET=10.15' packaging/macos/package.sh || die "MACOSX_DEPLOYMENT_TARGET is not 10.15 in package.sh after the change. Upstream may have changed that line; look at it with: grep -n MACOSX_DEPLOYMENT_TARGET $APPDIR/packaging/macos/package.sh"
-grep -A1 'LSMinimumSystemVersion' "$PLIST" | grep -q '<string>10.15</string>' || die "LSMinimumSystemVersion is not 10.15 in Info.plist.in after the change. Upstream may have changed that line."
-
-PATCH="$SCRIPT_DIR/patches/$APP.patch"
-if [ -f "$PATCH" ]; then
-  say "Applying patches/$APP.patch"
-  git apply "$PATCH" || die "patches/$APP.patch does not apply to $REF. The app changed the code the patch touches; the patch needs an update. Please open an issue."
-else
-  echo "No source patch for $APP; building with the version change only."
-fi
-
-CFG="$SCRIPT_DIR/patches/$APP.cargo-config.toml"
-if [ -f "$CFG" ]; then
-  say "Adding linker settings from patches/$APP.cargo-config.toml"
-  STUBS="$WORK/stubs/$APP"
-  mkdir -p "$STUBS"
-  # Optional helpers some apps need (see the comments in the cargo-config file):
-  # a small C file with replacements for system functions Catalina does not have ...
-  SHIMC="$SCRIPT_DIR/patches/$APP.shim.c"
-  if [ -f "$SHIMC" ]; then
-    clang -c -arch x86_64 -mmacosx-version-min=10.15 -o "$STUBS/shim.o" "$SHIMC" || die "Compiling patches/$APP.shim.c failed."
-  fi
-  # ... and empty placeholders for frameworks that only the link step wants to see.
-  FWLIST="$SCRIPT_DIR/patches/$APP.stub-frameworks"
-  if [ -f "$FWLIST" ]; then
-    while IFS= read -r fw || [ -n "$fw" ]; do
-      case "$fw" in ""|*[!A-Za-z0-9]*) continue ;; esac
-      mkdir -p "$STUBS/$fw.framework"
-      printf 'void %s_stub(void) {}\n' "$fw" > "$STUBS/$fw.c"
-      clang -dynamiclib -arch x86_64 -mmacosx-version-min=10.15 \
-        -install_name "/System/Library/Frameworks/$fw.framework/Versions/A/$fw" \
-        -o "$STUBS/$fw.framework/$fw" "$STUBS/$fw.c" || die "Creating the placeholder for the framework $fw failed."
-    done < "$FWLIST"
-  fi
-  sed -e "s|@STUBS_DIR@|$STUBS|g" -e "s|@SHIM_OBJ@|$STUBS/shim.o|g" "$CFG" > "$STUBS/cargo-config.toml"
-  CFG="$STUBS/cargo-config.toml"
-  mkdir -p .cargo
-  if [ -f .cargo/config.toml ]; then
-    # The app has its own cargo config (for example an alias): add ours after it.
-    if grep -q 'target.x86_64-apple-darwin' .cargo/config.toml; then
-      die "$APP already sets x86_64-apple-darwin options in .cargo/config.toml; merge $CFG into it by hand."
-    fi
-    { cat .cargo/config.toml; echo; cat "$CFG"; } > .cargo/config.toml.new
-    mv .cargo/config.toml.new .cargo/config.toml
-  else
-    cp "$CFG" .cargo/config.toml
-  fi
-fi
-
-# Some apps draw the background of the disk image with resvg (a small tool, installed with cargo).
-if grep -q resvg packaging/macos/package.sh && ! command -v resvg >/dev/null 2>&1; then
-  RV="$(sed -n 's/^RESVG_VERSION=\([0-9][0-9.]*\).*/\1/p' packaging/macos/package.sh | head -n 1)"
-  say "Installing resvg ${RV:-(latest)} (needed for the disk image; takes a few minutes)"
-  if [ -n "$RV" ]; then
-    cargo install resvg --locked --version "$RV" || die "Installing resvg failed (see above)."
-  else
-    cargo install resvg --locked || die "Installing resvg failed (see above)."
-  fi
-fi
-
-say "Building (the first build of an app takes a long time; warnings are normal)"
-# "bash" in front: some apps (MailCraft) have the script without the executable flag in git.
-# The output is also kept in a log file to tell a failed disk image from a failed build.
-LOG="$WORK/last-build-$APP.log"
-set +e
-CRAFT_I18N_DIR="$WORK/craft-i18n" bash ./packaging/macos/package.sh --arch x86_64 2>&1 | tee "$LOG"
-BUILD_RC="${PIPESTATUS[0]}"
-set -e
-if [ "$BUILD_RC" -ne 0 ]; then
-  # The disk image (.dmg) is the very last step, after the app is built, assembled and signed. Some
-  # apps need a newer Python for it than Catalina has. The app itself is then finished and usable.
-  if grep -q '^==> building .*\.dmg' "$LOG" && ls -d "$APPDIR"/target/macos-package/*.app >/dev/null 2>&1; then
-    warn "The app is finished, but the last step (creating the disk image .dmg) failed. The disk image is not needed: use the app from the folder that opens next."
-  else
-    die_build
-  fi
-fi
-
-OUT="$(find "$APPDIR/target" -maxdepth 3 -type d -name macos-package 2>/dev/null | head -n 1 || true)"
-if [ -z "$OUT" ]; then OUT="$APPDIR"; fi
-DMG="$(find "$APPDIR" -maxdepth 4 -name '*-macos-x86_64.dmg' 2>/dev/null | head -n 1 || true)"
-say "Done"
-echo "App folder: $OUT"
-if [ -n "$DMG" ]; then echo "Disk image: $DMG"; fi
-echo "Because the app is not signed by Apple, open it the first time with right-click > Open."
-open "$OUT" || true
+case "$ACTION" in
+  list-apps) action_list_apps ;;
+  check) action_check ;;
+  install-tools) action_install_tools ;;
+  install-rust) MACHINE=1; action_install_rust ;;
+  info | copy | clean)
+    ARG_APP="$(printf '%s' "$ARG_APP" | tr 'A-Z' 'a-z')"
+    valid_app "$ARG_APP" || die "unknown app: $ARG_APP"
+    "action_${ACTION//-/_}" "$ARG_APP"
+    ;;
+  build) do_build "$@" ;;
+esac
