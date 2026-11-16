@@ -61,8 +61,16 @@ window, and at the end offers to copy the app to your Applications folder (repla
 version) and to delete or keep the sources. It does everything by calling `install.sh`, so both
 always behave the same. English and German.
 
-Until a download is offered, you can start it from the source (needs Rust, see the first steps of
-"Build by hand" below), in the `craft-catalina` folder:
+**Download:** the newest `Craftalina-<version>-macos10.15-x86_64.zip` is on the
+[Releases page](https://github.com/sudo-mk-sandwich/craft-catalina/releases). It contains only the
+window, no Craft app. Unzip it, drag **Craftalina** into Applications and open it the first time with
+**right-click > Open** (the app is not notarized by Apple). At every start it downloads the newest
+`install.sh` and patches from this repository (internet needed; without it, the copy from the last
+start is used), so you do not have to download a new Craftalina when a patch changes. Checksum: the
+`.sha256` file next to the zip.
+
+Or start it from the source (needs Rust, see the first steps of "Build by hand" below), in the
+`craft-catalina` folder:
 
 ```
 cd app
