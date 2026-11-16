@@ -213,6 +213,7 @@ die_build() {
     elif grep -q 'framework not found' "$LOG" 2>/dev/null; then emit "KIND framework-not-found"
     elif grep -q 'does not apply' "$LOG" 2>/dev/null; then emit "KIND patch"
     else emit "KIND build-failed"; fi
+    die "The build stopped."
   fi
   die "The build stopped (see the lines above, usually the first one starting with 'error').
   The sources stay in $APPDIR; run this script again to continue after a fix.
