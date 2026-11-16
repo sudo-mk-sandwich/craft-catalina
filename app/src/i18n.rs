@@ -56,6 +56,7 @@ pub enum K {
     CheckAgain,
     ChooseApp,
     Build,
+    UpdateBtn,
     PickFirst,
     NeedRequirements,
     Preparing,
@@ -144,6 +145,7 @@ pub fn t(l: Lang, k: K) -> &'static str {
         K::CheckAgain => p(l, "Check again", "Erneut prüfen"),
         K::ChooseApp => p(l, "2. Which app do you want to build?", "2. Welche App soll gebaut werden?"),
         K::Build => p(l, "Build", "Bauen"),
+        K::UpdateBtn => p(l, "Update", "Aktualisieren"),
         K::PickFirst => p(l, "Pick an app in the list.", "Wähle eine App in der Liste."),
         K::NeedRequirements => p(
             l,
@@ -301,5 +303,18 @@ pub fn deleted_note(l: Lang, size: &str) -> String {
     match l {
         Lang::En => format!("Deleted, {size} freed."),
         Lang::De => format!("Gelöscht, {size} frei geworden."),
+    }
+}
+
+/// Status text in the app list for an installed app. `latest` is the newest stable version when it
+/// is known: the text then says whether the installed one is current or can be updated.
+pub fn installed_status(l: Lang, installed: &str, latest: Option<&str>, update: bool) -> String {
+    match (l, latest, update) {
+        (Lang::En, Some(n), true) => format!("Update: {installed} -> {n}"),
+        (Lang::De, Some(n), true) => format!("Update: {installed} -> {n}"),
+        (Lang::En, Some(_), false) => format!("Installed {installed}, current"),
+        (Lang::De, Some(_), false) => format!("Installiert {installed}, aktuell"),
+        (Lang::En, None, _) => format!("Installed {installed}"),
+        (Lang::De, None, _) => format!("Installiert {installed}"),
     }
 }

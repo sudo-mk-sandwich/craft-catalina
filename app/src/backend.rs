@@ -12,6 +12,7 @@ use std::sync::Arc;
 pub enum TaskKind {
     Check,
     ListApps,
+    Installed,
     InstallTools,
     InstallRust,
     Build,

@@ -7,11 +7,13 @@ mod backend;
 mod bootstrap;
 mod i18n;
 mod model;
+mod updates;
 
 use backend::{parse_marker, Event, PidHandle, TaskKind};
 use model::{format_duration, format_size, Busy, BuildState, ResultState, Status};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Shape, Stroke};
-use i18n::{app_description, t, Lang, K};
+use i18n::{app_description, installed_status, t, Lang, K};
+use std::collections::HashMap;
 
 const ISSUES_URL: &str = "https://github.com/sudo-mk-sandwich/craft-catalina/issues";
 use std::path::PathBuf;
@@ -83,6 +85,13 @@ struct Builder {
     rx: Receiver<Event>,
     prereqs: Prereqs,
     apps: Vec<AppEntry>,
+    /// app name -> installed version (from install.sh --installed)
+    installed: HashMap<String, String>,
+    /// app name -> newest stable version on GitHub, when known
+    latest: HashMap<String, String>,
+    latest_rx: Receiver<(String, Option<String>)>,
+    latest_tx: Sender<(String, Option<String>)>,
+    latest_busy: bool,
     selected: Option<usize>,
     checking: bool,
     tools_wait: bool,
@@ -101,6 +110,7 @@ impl Builder {
         });
         let (tx, rx) = channel();
         let (prep_tx, prep_rx) = channel();
+        let (latest_tx, latest_rx) = channel();
         {
             // Getting the newest install.sh can take a moment (download), so it runs on a thread.
             let ctx = ctx.clone();
@@ -131,6 +141,11 @@ impl Builder {
                 macos: String::new(),
             },
             apps: Vec::new(),
+            installed: HashMap::new(),
+            latest: HashMap::new(),
+            latest_rx,
+            latest_tx,
+            latest_busy: false,
             selected: None,
             checking: false,
             tools_wait: false,
@@ -149,10 +164,63 @@ impl Builder {
             return;
         }
         self.start(TaskKind::ListApps, &["--list-apps"]);
+        self.refresh_installed();
         self.start_check();
         // For tests only: start a build without clicking.
         if let Ok(app) = std::env::var("CRAFTALINA_AUTOSTART") {
             self.start_build(&app);
+        }
+    }
+
+    /// Looks again at which apps are installed. When that is known, the newest versions are asked
+    /// for in the background (only for installed apps, and answers are kept for an hour).
+    fn refresh_installed(&mut self) {
+        self.installed.clear();
+        self.start(TaskKind::Installed, &["--installed"]);
+    }
+
+    fn start_latest_lookup(&mut self) {
+        if self.latest_busy {
+            return;
+        }
+        let mut names: Vec<String> = self
+            .installed
+            .iter()
+            .filter(|(n, v)| v.as_str() != "?" && !self.latest.contains_key(n.as_str()))
+            .map(|(n, _)| n.clone())
+            .collect();
+        if names.is_empty() {
+            return;
+        }
+        names.sort();
+        self.latest_busy = true;
+        let tx = self.latest_tx.clone();
+        let ctx = self.ctx.clone();
+        std::thread::spawn(move || {
+            for n in names {
+                let found = updates::fetch_latest(&n);
+                let _ = tx.send((n, found));
+                ctx.request_repaint();
+            }
+            let _ = tx.send((String::new(), None));
+            ctx.request_repaint();
+        });
+    }
+
+    fn update_available(&self, app: &str) -> bool {
+        match (self.installed.get(app), self.latest.get(app)) {
+            (Some(i), Some(n)) => updates::is_newer(i, n),
+            _ => false,
+        }
+    }
+
+    fn handle_installed_line(&mut self, rest: &str) {
+        // Fields: name, version, path (the path may contain spaces).
+        let mut f = rest.splitn(3, ' ');
+        let name = f.next().unwrap_or("");
+        let version = f.next().unwrap_or("?");
+        if !name.is_empty() {
+            self.installed.insert(name.to_string(), version.to_string());
         }
     }
 
@@ -237,6 +305,13 @@ impl Builder {
     }
 
     fn drain_events(&mut self) {
+        while let Ok((name, found)) = self.latest_rx.try_recv() {
+            if name.is_empty() {
+                self.latest_busy = false;
+            } else if let Some(v) = found {
+                self.latest.insert(name, v);
+            }
+        }
         while let Ok(ev) = self.rx.try_recv() {
             match ev {
                 Event::Line(kind, line) => {
@@ -244,6 +319,7 @@ impl Builder {
                     match (kind, marker) {
                         (TaskKind::Check, Some(("CHECK", rest))) => self.handle_check_line(rest),
                         (TaskKind::ListApps, Some(("APP", rest))) => self.handle_app_line(rest),
+                        (TaskKind::Installed, Some(("INSTALLED_APP", rest))) => self.handle_installed_line(rest),
                         (TaskKind::InstallRust, Some(("STEP", rest))) => self.last_line = rest.to_string(),
                         (TaskKind::InstallRust, None) if !line.trim().is_empty() => {
                             self.last_line = line.trim().to_string()
@@ -277,6 +353,7 @@ impl Builder {
                         self.next_poll = Some(Instant::now() + Duration::from_secs(4));
                     }
                     TaskKind::ListApps => {}
+                    TaskKind::Installed => self.start_latest_lookup(),
                     TaskKind::Build => self.build_finished(),
                     TaskKind::Info => {}
                     TaskKind::Copy | TaskKind::Clean => {
@@ -520,6 +597,7 @@ impl Builder {
         let list_height = (ui.available_height() - 8.0).max(120.0);
         // A scroll bar that takes its own space instead of floating over the last column.
         ui.spacing_mut().scroll.floating = false;
+        let show_status = !self.installed.is_empty();
         egui::ScrollArea::vertical().max_height(list_height).auto_shrink([false, false]).show(ui, |ui| {
             for i in 0..self.apps.len() {
                 let selected = self.selected == Some(i);
@@ -527,6 +605,12 @@ impl Builder {
                     let a = &self.apps[i];
                     (a.name.clone(), app_description(l, &a.name, &a.descr))
                 };
+                // Only apps that are installed get a status; the column exists when any app is.
+                let status: Option<(String, Color32)> = self.installed.get(&name).map(|v| {
+                    let latest = self.latest.get(&name).map(|s| s.as_str());
+                    let update = self.update_available(&name);
+                    (installed_status(l, v, latest, update), if update { ORANGE } else { GREEN })
+                });
                 ui.horizontal(|ui| {
                     ui.allocate_ui_with_layout(
                         egui::vec2(150.0, 24.0),
@@ -538,6 +622,18 @@ impl Builder {
                             }
                         },
                     );
+                    if show_status {
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(190.0, 24.0),
+                            Layout::left_to_right(Align::Center),
+                            |ui| {
+                                ui.set_min_size(egui::vec2(190.0, 24.0));
+                                if let Some((text, color)) = &status {
+                                    ui.label(RichText::new(text.as_str()).color(*color));
+                                }
+                            },
+                        );
+                    }
                     ui.label(descr);
                 });
             }
@@ -763,7 +859,9 @@ impl eframe::App for Builder {
                             && self.requirements_ok()
                             && !self.rust_busy
                             && !self.tools_wait;
-                        if ui.add_enabled(ready, egui::Button::new(t(l, K::Build))).clicked() {
+                        let update = self.selected.map(|i| self.update_available(&self.apps[i].name)).unwrap_or(false);
+                        let label = if update { t(l, K::UpdateBtn) } else { t(l, K::Build) };
+                        if ui.add_enabled(ready, egui::Button::new(label)).clicked() {
                             if let Some(i) = self.selected {
                                 let name = self.apps[i].name.clone();
                                 self.start_build(&name);
@@ -792,6 +890,7 @@ impl eframe::App for Builder {
                             self.build = None;
                             self.result = None;
                             self.start_check();
+                            self.refresh_installed();
                         }
                     }
                 });
