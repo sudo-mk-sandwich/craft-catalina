@@ -5,9 +5,9 @@ Unofficial community project that builds the Craft apps from
 affiliated with or endorsed by the original authors. The apps are made by the ArtCraft team and
 their contributors and are licensed under MIT OR Apache-2.0.
 
-This repository contains **no app source code and no logos**, only `install.sh` (builds one app on
-your Mac), a GitHub workflow (builds one app on GitHub), small patches in `patches/`, and this
-README. Builds are **Intel (x86_64) only**, **ad-hoc signed and not notarized**. Apple silicon Macs
+This repository contains **no source code of the apps and no logos**, only `install.sh` (builds one
+app on your Mac), `app/` (the source of **Craftalina**, a small window around `install.sh`), a
+GitHub workflow (builds one app on GitHub), small patches in `patches/`, and this README. Builds are **Intel (x86_64) only**, **ad-hoc signed and not notarized**. Apple silicon Macs
 do not need this project.
 
 ## Install
@@ -51,6 +51,22 @@ bash install.sh wordcraft                        # skip the menu
 CRAFT_REF=v0.5.0 bash install.sh wordcraft       # a specific tag or branch
 CRAFT_BUILD_DIR=/Volumes/Big/craft bash install.sh   # build somewhere else
 CRAFT_NO_UPDATE=1 bash install.sh                # skip the git pull (offline)
+```
+
+## Craftalina (a window instead of the Terminal)
+
+Craftalina is an unofficial, small graphical front end for `install.sh`. It checks what is needed
+(developer tools, Rust) and installs it on a click, lets you pick an app, builds it with a progress
+window, and at the end offers to copy the app to your Applications folder (replacing an older
+version) and to delete or keep the sources. It does everything by calling `install.sh`, so both
+always behave the same. English and German.
+
+Until a download is offered, you can start it from the source (needs Rust, see the first steps of
+"Build by hand" below), in the `craft-catalina` folder:
+
+```
+cd app
+cargo run --release
 ```
 
 ## What is changed
