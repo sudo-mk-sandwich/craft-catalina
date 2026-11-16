@@ -7,6 +7,7 @@
 # For programs that drive this script (such as a graphical front end) there are also actions that
 # print machine-readable lines starting with "@@" and never ask questions:
 #   --list-apps            @@APP <name> <tested 0|1> <description>   (tab separated)
+#   --installed            @@INSTALLED_APP <name> <version> <path> for each installed app
 #   --check                @@CHECK tools|rust|target|disk|arch|macos <status> [detail]
 #   --install-tools        opens Apple's installer for the developer tools
 #   --install-rust         installs Rust (official installer, no sudo) and the Intel target
@@ -349,6 +350,30 @@ action_info() { # action_info <app>
   fi
 }
 
+# Lists the installed apps of the suite: one "@@INSTALLED_APP <name> <version> <path>" line each.
+# An app counts as installed when its .app name, written in lower case without spaces or hyphens,
+# equals the app name (WordCraft.app = wordcraft, "Craft Anything.app" = craft-anything).
+norm_name() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d ' _-'; }
+
+action_installed() {
+  local dir d base a want ver
+  for dir in "${CRAFT_APPLICATIONS_DIR:-/Applications}" "$HOME/Applications"; do
+    [ -d "$dir" ] || continue
+    for d in "$dir"/*.app; do
+      [ -d "$d" ] || continue
+      base="$(norm_name "$(basename "$d" .app)")"
+      for a in "${APPS[@]}"; do
+        want="$(norm_name "$a")"
+        if [ "$base" = "$want" ]; then
+          ver="$(plist_version "$d")"
+          emit "INSTALLED_APP $a ${ver:-?} $d"
+        fi
+      done
+    done
+  done
+  return 0
+}
+
 action_copy() { # action_copy <app>
   local b name destdir dest tmp
   b="$(bundle_of "$1")"
@@ -538,6 +563,7 @@ for arg in "$@"; do
     --machine) MACHINE=1 ;;
     --build) ACTION="build" ;;
     --list-apps) ACTION="list-apps" ;;
+    --installed) ACTION="installed" ;;
     --check) ACTION="check" ;;
     --install-tools) ACTION="install-tools" ;;
     --install-rust) ACTION="install-rust" ;;
@@ -552,6 +578,7 @@ done
 
 case "$ACTION" in
   list-apps) action_list_apps ;;
+  installed) action_installed ;;
   check) action_check ;;
   install-tools) action_install_tools ;;
   install-rust) MACHINE=1; action_install_rust ;;

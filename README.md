@@ -61,6 +61,11 @@ window, and at the end offers to copy the app to your Applications folder (repla
 version) and to delete or keep the sources. It does everything by calling `install.sh`, so both
 always behave the same. English and German.
 
+Apps that are already in your Applications folder are marked with their version. Craftalina
+compares it with the newest stable version on GitHub and shows **Update: 0.18.1 -> 0.19.0** when
+there is a newer one (the button then says Update). The check needs internet and is skipped quietly
+without it.
+
 **Download:** the newest `Craftalina-<version>-macos10.15-x86_64.zip` is on the
 [Releases page](https://github.com/sudo-mk-sandwich/craft-catalina/releases). It contains only the
 window, no Craft app. Unzip it, drag **Craftalina** into Applications and open it the first time with
