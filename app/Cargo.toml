@@ -1,0 +1,17 @@
+[package]
+name = "craftalina"
+version = "0.1.0"
+edition = "2021"
+description = "A small window around install.sh: checks what is needed, lets you pick an app and builds it for macOS 10.15 Catalina"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+# glow (OpenGL) is the simplest backend for a small window on old Macs. "x11" only matters when
+# the project is compiled on Linux for a quick check; macOS ignores it.
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "x11"] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true
