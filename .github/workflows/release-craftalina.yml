@@ -95,7 +95,10 @@ jobs:
         run: |
           ZIP="Craftalina-$VERSION-macos10.15-x86_64.zip"
           SUM="$(cut -d' ' -f1 "dist/$ZIP.sha256")"
-          sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{SHA256}}/$SUM/g" app/packaging/release-notes.md > dist/notes.md
+          # What is new in this version (optional file app/packaging/changes/<version>.md) goes first.
+          : > dist/notes.md
+          if [ -f "app/packaging/changes/$VERSION.md" ]; then cat "app/packaging/changes/$VERSION.md" >> dist/notes.md; fi
+          sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{SHA256}}/$SUM/g" app/packaging/release-notes.md >> dist/notes.md
           # Fail instead of publishing a text with an unreplaced placeholder.
           if grep -qE '[{][{]|@VERSION@|@SHA256@' dist/notes.md; then
             echo "The release text still contains a placeholder:"; grep -nE '[{][{]|@VERSION@|@SHA256@' dist/notes.md; exit 1
