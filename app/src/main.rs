@@ -594,6 +594,10 @@ impl Builder {
         ui.separator();
         ui.label(RichText::new(t(l, K::ChooseApp)).heading());
         ui.add_space(4.0);
+        if !self.installed.is_empty() {
+            ui.add(egui::Label::new(RichText::new(t(l, K::UpdateNote)).color(GREEN)).wrap());
+            ui.add_space(4.0);
+        }
         let list_height = (ui.available_height() - 8.0).max(120.0);
         // A scroll bar that takes its own space instead of floating over the last column.
         ui.spacing_mut().scroll.floating = false;
@@ -744,6 +748,8 @@ impl Builder {
             ui.label(t(l, K::NotAnApp));
             return;
         }
+        ui.add(egui::Label::new(RichText::new(t(l, K::UpdateNote)).color(GREEN)).wrap());
+        ui.add_space(4.0);
         // After "delete" the finished app in the build folder is gone as well.
         if r.cleaned_kb.is_none() {
             ui.label(RichText::new(&r.app_path).weak());

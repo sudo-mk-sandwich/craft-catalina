@@ -57,6 +57,7 @@ pub enum K {
     ChooseApp,
     Build,
     UpdateBtn,
+    UpdateNote,
     PickFirst,
     NeedRequirements,
     Preparing,
@@ -146,6 +147,11 @@ pub fn t(l: Lang, k: K) -> &'static str {
         K::ChooseApp => p(l, "2. Which app do you want to build?", "2. Welche App soll gebaut werden?"),
         K::Build => p(l, "Build", "Bauen"),
         K::UpdateBtn => p(l, "Update", "Aktualisieren"),
+        K::UpdateNote => p(
+            l,
+            "Note: the app's own update function breaks the Catalina patch. To update, use Craftalina.",
+            "Hinweis: Die Update-Funktion in der App selbst zerstört den Catalina-Patch. Zum Aktualisieren bitte Craftalina benutzen.",
+        ),
         K::PickFirst => p(l, "Pick an app in the list.", "Wähle eine App in der Liste."),
         K::NeedRequirements => p(
             l,
