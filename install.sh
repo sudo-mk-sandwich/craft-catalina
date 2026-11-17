@@ -549,6 +549,7 @@ do_build() {
     emit "DONE ${BUNDLE:-$OUT}"
   else
     echo "Because the app is not signed by Apple, open it the first time with right-click > Open."
+    echo "Note: the app's own update function breaks the Catalina patch. To update, run this script again (or use Craftalina)."
     open "$OUT" || true
   fi
 }

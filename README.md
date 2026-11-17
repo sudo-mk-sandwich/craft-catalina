@@ -20,6 +20,8 @@ The first build of an app takes a long time (30 minutes or more); one app is bui
 Craftalina is an unofficial small window around `install.sh`. It contains **only the window, no Craft
 app**.
 
+![Craftalina: checks what is needed and lists the apps, with installed versions marked](docs/craftalina.png)
+
 1. Download the newest `Craftalina-<version>-macos10.15-x86_64.zip` from the
    [Releases page](https://github.com/sudo-mk-sandwich/craft-catalina/releases), unzip it and drag
    **Craftalina** into your Applications folder.
