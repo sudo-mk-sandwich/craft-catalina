@@ -340,8 +340,8 @@ action_info() { # action_info <app>
   if [ -n "$b" ]; then
     emit "APP_PATH $b"
     emit "BUILT_VERSION $(plist_version "$b")"
-    dest="${CRAFT_APPLICATIONS_DIR:-/Applications}/$(basename "$b")"
-    if [ -d "$dest" ]; then
+    dest="$(find_installed "$1")"
+    if [ -n "$dest" ] && [ -d "$dest" ]; then
       emit "INSTALLED yes $dest"
       emit "INSTALLED_VERSION $(plist_version "$dest")"
     else
@@ -350,27 +350,57 @@ action_info() { # action_info <app>
   fi
 }
 
-# Lists the installed apps of the suite: one "@@INSTALLED_APP <name> <version> <path>" line each.
-# An app counts as installed when its .app name, written in lower case without spaces or hyphens,
-# equals the app name (WordCraft.app = wordcraft, "Craft Anything.app" = craft-anything).
+# Which app of the suite is this bundle? The answer does not depend on the file name, so a renamed
+# app (Acrobat.app = PdfCraft) is still recognized: the last part of its bundle identifier
+# (ai.storyteller.pdfcraft) names the app. Only a bundle without a readable identifier is matched
+# by its file name, written in lower case without spaces or hyphens (WordCraft.app = wordcraft,
+# "Craft Anything.app" = craft-anything).
 norm_name() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d ' _-'; }
 
-action_installed() {
-  local dir d base a want ver
-  for dir in "${CRAFT_APPLICATIONS_DIR:-/Applications}" "$HOME/Applications"; do
+app_of_bundle() { # app_of_bundle <bundle>   prints the app name, or nothing
+  local d="$1" id key a
+  id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$d/Contents/Info.plist" 2>/dev/null || true)"
+  if [ -n "$id" ]; then key="$(norm_name "${id##*.}")"; else key="$(norm_name "$(basename "$d" .app)")"; fi
+  for a in "${APPS[@]}"; do
+    if [ "$key" = "$(norm_name "$a")" ]; then printf '%s' "$a"; return 0; fi
+  done
+  return 0
+}
+
+# The places where installed apps are looked for.
+app_dirs() { printf '%s\n' "${CRAFT_APPLICATIONS_DIR:-/Applications}" "$HOME/Applications"; }
+
+# Path of the installed bundle of an app (the first one found), or nothing.
+find_installed() { # find_installed <app>
+  local dir d
+  while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     for d in "$dir"/*.app; do
       [ -d "$d" ] || continue
-      base="$(norm_name "$(basename "$d" .app)")"
-      for a in "${APPS[@]}"; do
-        want="$(norm_name "$a")"
-        if [ "$base" = "$want" ]; then
-          ver="$(plist_version "$d")"
-          emit "INSTALLED_APP $a ${ver:-?} $d"
-        fi
-      done
+      if [ "$(app_of_bundle "$d")" = "$1" ]; then printf '%s' "$d"; return 0; fi
     done
-  done
+  done <<EOF_DIRS
+$(app_dirs)
+EOF_DIRS
+  return 0
+}
+
+# Lists the installed apps of the suite: one "@@INSTALLED_APP <name> <version> <path>" line each.
+action_installed() {
+  local dir d a ver
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    for d in "$dir"/*.app; do
+      [ -d "$d" ] || continue
+      a="$(app_of_bundle "$d")"
+      if [ -n "$a" ]; then
+        ver="$(plist_version "$d")"
+        emit "INSTALLED_APP $a ${ver:-?} $d"
+      fi
+    done
+  done <<EOF_DIRS
+$(app_dirs)
+EOF_DIRS
   return 0
 }
 
@@ -380,8 +410,14 @@ action_copy() { # action_copy <app>
   [ -n "$b" ] || die "There is no finished app for $1. Build it first."
   name="$(basename "$b")"
   case "$name" in *.app) ;; *) die "unexpected app name: $name" ;; esac
-  destdir="${CRAFT_APPLICATIONS_DIR:-/Applications}"
-  dest="$destdir/$name"
+  dest="$(find_installed "$1")"
+  if [ -n "$dest" ]; then
+    destdir="$(dirname "$dest")"   # an app the user renamed is updated under its own name
+    name="$(basename "$dest")"
+  else
+    destdir="${CRAFT_APPLICATIONS_DIR:-/Applications}"
+    dest="$destdir/$name"
+  fi
   if pgrep -f "$dest/Contents/MacOS/" >/dev/null 2>&1; then die "$name is running. Quit it and try again."; fi
   tmp="$dest.new.$$"
   rm -rf "$tmp"

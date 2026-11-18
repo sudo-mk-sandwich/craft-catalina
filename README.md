@@ -70,6 +70,8 @@ instead:
 - **Craftalina:** apps in your Applications folder are marked with their version. Craftalina compares
   it with the newest stable version on GitHub and shows **Update: 0.18.1 -> 0.19.0** when there is a
   newer one (the button then says Update). The check needs internet and is skipped quietly without it.
+  You may rename an app (for example PdfCraft to Acrobat): it is recognized by its identifier, not by its
+  file name, and an update replaces it under the name you chose.
 - **Terminal:** the three commands above are needed only once; afterwards
   `cd craft-catalina` and `bash install.sh` is enough (`cd` is relative to the folder where you ran
   `git clone`, usually your home folder). The script first pulls new patches and script fixes
