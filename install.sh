@@ -28,6 +28,8 @@
 #   CRAFT_GIT_BASE    where the repositories are cloned from (default https://github.com/storytold)
 #   CRAFT_NO_UPDATE   set to 1 to skip the git pull of this script's own repository (offline use)
 #   CRAFT_APPLICATIONS_DIR  where --copy puts the app (default /Applications)
+#   CRAFT_INSTALL_DIR       an extra folder: installed apps are looked for here first, and an app that is
+#                           not installed yet is copied here instead of /Applications
 #
 # Written for the bash 3.2 that ships with macOS 10.15: no associative arrays, no mapfile.
 set -eu
@@ -368,7 +370,15 @@ app_of_bundle() { # app_of_bundle <bundle>   prints the app name, or nothing
 }
 
 # The places where installed apps are looked for.
-app_dirs() { printf '%s\n' "${CRAFT_APPLICATIONS_DIR:-/Applications}" "$HOME/Applications"; }
+# The chosen folder (CRAFT_INSTALL_DIR, if it exists) comes first, so an app found there wins.
+app_dirs() {
+  local d custom="${CRAFT_INSTALL_DIR:-}" std="${CRAFT_APPLICATIONS_DIR:-/Applications}"
+  custom="${custom%/}"
+  if [ -n "$custom" ] && [ -d "$custom" ]; then printf '%s\n' "$custom"; fi
+  for d in "$std" "$HOME/Applications"; do
+    if [ "$d" != "$custom" ]; then printf '%s\n' "$d"; fi
+  done
+}
 
 # Path of the installed bundle of an app (the first one found), or nothing.
 find_installed() { # find_installed <app>
@@ -415,7 +425,12 @@ action_copy() { # action_copy <app>
     destdir="$(dirname "$dest")"   # an app the user renamed is updated under its own name
     name="$(basename "$dest")"
   else
-    destdir="${CRAFT_APPLICATIONS_DIR:-/Applications}"
+    destdir="${CRAFT_INSTALL_DIR:-}"
+    destdir="${destdir%/}"
+    if [ -z "$destdir" ] || [ ! -d "$destdir" ]; then
+      if [ -n "$destdir" ]; then warn "The folder $destdir does not exist; using the Applications folder."; fi
+      destdir="${CRAFT_APPLICATIONS_DIR:-/Applications}"
+    fi
     dest="$destdir/$name"
   fi
   if pgrep -f "$dest/Contents/MacOS/" >/dev/null 2>&1; then die "$name is running. Quit it and try again."; fi

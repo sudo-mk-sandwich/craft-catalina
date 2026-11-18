@@ -63,6 +63,7 @@ pub fn spawn(
     kind: TaskKind,
     args: &[&str],
     keep_awake: bool,
+    install_dir: Option<String>,
     tx: Sender<Event>,
     repaint: impl Fn() + Send + Clone + 'static,
 ) -> PidHandle {
@@ -70,9 +71,13 @@ pub fn spawn(
     let pid_for_thread = pid_handle.clone();
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     std::thread::spawn(move || {
-        let child = Command::new("/bin/bash")
-            .arg(&script)
-            .args(&args)
+        let mut cmd = Command::new("/bin/bash");
+        cmd.arg(&script).args(&args);
+        match &install_dir {
+            Some(d) => cmd.env("CRAFT_INSTALL_DIR", d),
+            None => cmd.env_remove("CRAFT_INSTALL_DIR"),
+        };
+        let child = cmd
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

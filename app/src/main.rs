@@ -7,6 +7,7 @@ mod backend;
 mod bootstrap;
 mod i18n;
 mod model;
+mod settings;
 mod updates;
 
 use backend::{parse_marker, Event, PidHandle, TaskKind};
@@ -92,6 +93,10 @@ struct Builder {
     latest_rx: Receiver<(String, Option<String>)>,
     latest_tx: Sender<(String, Option<String>)>,
     latest_busy: bool,
+    settings: settings::Settings,
+    next_dir: Option<PathBuf>,
+    folder_rx: Receiver<Option<String>>,
+    folder_tx: Sender<Option<String>>,
     selected: Option<usize>,
     checking: bool,
     tools_wait: bool,
@@ -111,6 +116,7 @@ impl Builder {
         let (tx, rx) = channel();
         let (prep_tx, prep_rx) = channel();
         let (latest_tx, latest_rx) = channel();
+        let (folder_tx, folder_rx) = channel();
         {
             // Getting the newest install.sh can take a moment (download), so it runs on a thread.
             let ctx = ctx.clone();
@@ -146,6 +152,10 @@ impl Builder {
             latest_rx,
             latest_tx,
             latest_busy: false,
+            settings: settings::load(),
+            next_dir: settings::next_to_app(),
+            folder_rx,
+            folder_tx,
             selected: None,
             checking: false,
             tools_wait: false,
@@ -220,7 +230,84 @@ impl Builder {
         let name = f.next().unwrap_or("");
         let version = f.next().unwrap_or("?");
         if !name.is_empty() {
-            self.installed.insert(name.to_string(), version.to_string());
+            // The first line is the one in the chosen folder: it wins over a copy elsewhere.
+            self.installed.entry(name.to_string()).or_insert_with(|| version.to_string());
+        }
+    }
+
+    /// The folder chosen for the apps (CRAFT_INSTALL_DIR), or None for the Applications folder.
+    fn install_dir(&self) -> Option<String> {
+        self.settings
+            .install_dir(self.next_dir.as_deref())
+            .filter(|d| std::path::Path::new(d).is_dir())
+    }
+
+    /// True when a folder was chosen that is gone (deleted, drive not connected).
+    fn install_dir_missing(&self) -> bool {
+        self.settings
+            .install_dir(self.next_dir.as_deref())
+            .map(|d| !std::path::Path::new(&d).is_dir())
+            .unwrap_or(false)
+    }
+
+    fn set_location(&mut self, location: settings::Location) {
+        if self.settings.location != location {
+            self.settings.location = location;
+            settings::save(&self.settings);
+            self.refresh_installed();
+        }
+    }
+
+    fn choose_folder(&self) {
+        let tx = self.folder_tx.clone();
+        let ctx = self.ctx.clone();
+        let prompt = t(self.lang, K::LocPrompt).to_string();
+        std::thread::spawn(move || {
+            let _ = tx.send(settings::choose_folder(&prompt));
+            ctx.request_repaint();
+        });
+    }
+
+    fn location_row(&mut self, ui: &mut egui::Ui) {
+        let l = self.lang;
+        let current = match self.settings.location {
+            settings::Location::Applications => t(l, K::LocApplications).to_string(),
+            settings::Location::NextToApp => t(l, K::LocNextTo).to_string(),
+            settings::Location::Custom => settings::pretty(&self.settings.custom),
+        };
+        let mut pick: Option<settings::Location> = None;
+        let mut choose = false;
+        ui.horizontal(|ui| {
+            ui.label(t(l, K::InstallLocation));
+            egui::ComboBox::from_id_salt("install-location")
+                .width(300.0)
+                .truncate()
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    let cur = self.settings.location;
+                    if ui.selectable_label(cur == settings::Location::Applications, t(l, K::LocApplications)).clicked() {
+                        pick = Some(settings::Location::Applications);
+                    }
+                    if let Some(dir) = &self.next_dir {
+                        let text = format!("{} ({})", t(l, K::LocNextTo), settings::pretty(&dir.to_string_lossy()));
+                        if ui.selectable_label(cur == settings::Location::NextToApp, text).clicked() {
+                            pick = Some(settings::Location::NextToApp);
+                        }
+                    }
+                    if ui.selectable_label(false, t(l, K::LocChoose)).clicked() {
+                        choose = true;
+                    }
+                });
+        });
+        if self.install_dir_missing() {
+            ui.colored_label(ORANGE, t(l, K::LocMissing));
+        }
+        if let Some(p) = pick {
+            // A chosen "next to Craftalina" that does not exist cannot happen; Custom needs a folder.
+            self.set_location(p);
+        }
+        if choose {
+            self.choose_folder();
         }
     }
 
@@ -231,7 +318,7 @@ impl Builder {
     fn start_awake(&self, kind: TaskKind, args: &[&str], keep_awake: bool) -> Option<PidHandle> {
         let script = self.script.as_ref()?;
         let ctx = self.ctx.clone();
-        Some(backend::spawn(script.clone(), kind, args, keep_awake, self.tx.clone(), move || {
+        Some(backend::spawn(script.clone(), kind, args, keep_awake, self.install_dir(), self.tx.clone(), move || {
             ctx.request_repaint()
         }))
     }
@@ -305,6 +392,14 @@ impl Builder {
     }
 
     fn drain_events(&mut self) {
+        while let Ok(answer) = self.folder_rx.try_recv() {
+            if let Some(dir) = answer {
+                self.settings.custom = dir;
+                self.settings.location = settings::Location::Custom;
+                settings::save(&self.settings);
+                self.refresh_installed();
+            }
+        }
         while let Ok((name, found)) = self.latest_rx.try_recv() {
             if name.is_empty() {
                 self.latest_busy = false;
@@ -402,6 +497,19 @@ impl Builder {
 
     fn requirements_ok(&self) -> bool {
         self.prereqs.tools.is_ok() && self.prereqs.rust.is_ok() && self.prereqs.target.is_ok()
+    }
+}
+
+/// How a folder is named in texts: "Applications" for the standard folder, else its own name.
+fn folder_label(l: Lang, dir: &str) -> String {
+    if dir == "/Applications" {
+        t(l, K::LocApplications).to_string()
+    } else {
+        // Only the name of the folder: the buttons stay short. The full path is shown beside them.
+        std::path::Path::new(dir)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| settings::pretty(dir))
     }
 }
 
@@ -594,6 +702,8 @@ impl Builder {
         ui.separator();
         ui.label(RichText::new(t(l, K::ChooseApp)).heading());
         ui.add_space(4.0);
+        self.location_row(ui);
+        ui.add_space(4.0);
         if !self.installed.is_empty() {
             ui.add(egui::Label::new(RichText::new(t(l, K::UpdateNote)).color(GREEN)).wrap());
             ui.add_space(4.0);
@@ -738,6 +848,7 @@ impl Builder {
         let comma = l == Lang::De;
         let mut copy = false;
         let mut delete = false;
+        let default_target = self.install_dir().unwrap_or_else(|| "/Applications".to_string());
         let Some(r) = self.result.as_mut() else { return };
         ui.separator();
         ui.horizontal(|ui| {
@@ -766,26 +877,36 @@ impl Builder {
         // ---- copy to Applications ----
         ui.add_space(10.0);
         ui.separator();
-        ui.label(RichText::new(t(l, K::InstallSection)).strong());
+        // Where the app goes: where an installed copy already is, else the chosen folder.
+        let target = match &r.installed_path {
+            Some(p) => std::path::Path::new(p)
+                .parent()
+                .map(|d| d.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            None => default_target,
+        };
+        let folder = folder_label(l, &target);
+        ui.label(RichText::new(i18n::install_section(l, &folder)).strong());
+        if target != "/Applications" && r.installed_path.is_none() {
+            ui.label(RichText::new(settings::pretty(&target)).weak());
+        }
         if let Some(path) = &r.copied_to {
             ui.horizontal(|ui| {
                 icon(ui, Icon::Ok);
-                ui.label(i18n::copied_to(l, ""));
+                ui.label(i18n::copied_to(l, &folder));
             });
             ui.label(RichText::new(path).weak());
             if ui.button(t(l, K::OpenApp)).clicked() {
                 backend::run_detached("/usr/bin/open", &[path]);
             }
         } else {
-            if r.installed_path.is_some() {
-                ui.label(RichText::new(i18n::already_installed(l, &r.installed_version)).weak());
+            if let Some(p) = &r.installed_path {
+                ui.label(RichText::new(i18n::already_installed(l, &r.installed_version, p)).weak());
             }
             let label = if r.busy == Some(Busy::Copying) {
-                t(l, K::CopyingNow)
-            } else if r.installed_path.is_some() {
-                t(l, K::ReplaceInApps)
+                t(l, K::CopyingNow).to_string()
             } else {
-                t(l, K::CopyToApps)
+                i18n::copy_button(l, &folder, r.installed_path.is_some())
             };
             if ui.add_enabled(r.busy.is_none(), egui::Button::new(label)).clicked() {
                 copy = true;

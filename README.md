@@ -31,6 +31,11 @@ app**.
    Pick an app, press **Build**, wait. At the end it offers to copy the app to your Applications
    folder (replacing an older version) and to keep or delete the sources.
 
+**Install location:** by default apps go to the Applications folder. In the window you can choose
+another one instead: the folder Craftalina itself sits in, or any folder you pick. Apps are then
+looked for there first (versions and updates are shown for them), and an app that is not installed yet
+is copied there. An app that is already installed is always updated where it is.
+
 At every start Craftalina downloads the newest `install.sh` and patches from this repository
 (internet needed; without it the copy from the last start is used), so you do not need a new
 Craftalina when a patch changes. English and German.
@@ -60,6 +65,7 @@ bash install.sh wordcraft                        # skip the menu
 CRAFT_REF=v0.5.0 bash install.sh wordcraft       # a specific tag or branch
 CRAFT_BUILD_DIR=/Volumes/Big/craft bash install.sh   # build somewhere else
 CRAFT_NO_UPDATE=1 bash install.sh                # skip the git pull (offline)
+CRAFT_INSTALL_DIR=~/ArtCraft bash install.sh       # look for and put apps in this folder (Craftalina's choice)
 ```
 
 ## Update

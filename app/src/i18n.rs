@@ -55,6 +55,12 @@ pub enum K {
     InstallingRust,
     CheckAgain,
     ChooseApp,
+    InstallLocation,
+    LocApplications,
+    LocNextTo,
+    LocChoose,
+    LocMissing,
+    LocPrompt,
     Build,
     UpdateBtn,
     UpdateNote,
@@ -78,9 +84,6 @@ pub enum K {
     OpenApp,
     OpenLogInFinder,
     ReportIssue,
-    InstallSection,
-    CopyToApps,
-    ReplaceInApps,
     CopyingNow,
     CleanupSection,
     KeepFiles,
@@ -145,6 +148,12 @@ pub fn t(l: Lang, k: K) -> &'static str {
         K::InstallingRust => p(l, "Installing ...", "Installiere ..."),
         K::CheckAgain => p(l, "Check again", "Erneut prüfen"),
         K::ChooseApp => p(l, "2. Which app do you want to build?", "2. Welche App soll gebaut werden?"),
+        K::InstallLocation => p(l, "Install location:", "Installationsort:"),
+        K::LocApplications => p(l, "Applications", "Programme"),
+        K::LocNextTo => p(l, "Next to Craftalina", "Neben Craftalina"),
+        K::LocChoose => p(l, "Choose folder...", "Ordner wählen ..."),
+        K::LocMissing => p(l, "This folder does not exist. The Applications folder is used.", "Dieser Ordner existiert nicht. Es wird der Programme-Ordner benutzt."),
+        K::LocPrompt => p(l, "Folder for the apps", "Ordner für die Apps"),
         K::Build => p(l, "Build", "Bauen"),
         K::UpdateBtn => p(l, "Update", "Aktualisieren"),
         K::UpdateNote => p(
@@ -184,17 +193,14 @@ pub fn t(l: Lang, k: K) -> &'static str {
         K::OpenApp => p(l, "Open the app", "App öffnen"),
         K::OpenLogInFinder => p(l, "Show log file in Finder", "Protokolldatei im Finder zeigen"),
         K::ReportIssue => p(l, "Report on GitHub", "Auf GitHub melden"),
-        K::InstallSection => p(l, "Put the app into your Applications folder?", "App in den Programme-Ordner legen?"),
-        K::CopyToApps => p(l, "Copy to Applications", "In Programme kopieren"),
-        K::ReplaceInApps => p(l, "Replace in Applications", "In Programme ersetzen"),
         K::CopyingNow => p(l, "Copying ...", "Kopiere ..."),
         K::CleanupSection => p(l, "Keep the source code and build files?", "Quellcode und Build-Dateien behalten?"),
         K::KeepFiles => p(l, "Keep them", "Behalten"),
         K::KeptNote => p(l, "Kept. The next update will be much faster.", "Behalten. Das nächste Update geht deutlich schneller."),
         K::DeleteNeedsCopy => p(
             l,
-            "Copy the app to Applications first: the build folder also holds the finished app, and it would be deleted with it.",
-            "Kopiere die App zuerst nach Programme: Der Build-Ordner enthält auch die fertige App, sie würde mitgelöscht.",
+            "Copy the app first: the build folder also holds the finished app, and it would be deleted with it.",
+            "Kopiere die App zuerst: Der Build-Ordner enthält auch die fertige App, sie würde mitgelöscht.",
         ),
         K::DeletingNow => p(l, "Deleting ...", "Lösche ..."),
         K::ErrorPrefix => p(l, "Message", "Meldung"),
@@ -276,18 +282,35 @@ pub fn built_title(l: Lang, app: &str, version: &str) -> String {
     }
 }
 
-pub fn already_installed(l: Lang, version: &str) -> String {
-    let v = if version.is_empty() { String::new() } else { format!(" ({version})") };
+/// `folder` is how the target folder is shown ("Applications", "~/ArtCraft", ...).
+pub fn install_section(l: Lang, folder: &str) -> String {
     match l {
-        Lang::En => format!("A version{v} is already in the Applications folder. Copying replaces it."),
-        Lang::De => format!("Im Programme-Ordner liegt schon eine Version{v}. Beim Kopieren wird sie ersetzt."),
+        Lang::En => format!("Put the app into {folder}?"),
+        Lang::De => format!("App nach {folder} legen?"),
     }
 }
 
-pub fn copied_to(l: Lang, path: &str) -> String {
+pub fn copy_button(l: Lang, folder: &str, replace: bool) -> String {
+    match (l, replace) {
+        (Lang::En, false) => format!("Copy to {folder}"),
+        (Lang::En, true) => format!("Replace in {folder}"),
+        (Lang::De, false) => format!("Nach {folder} kopieren"),
+        (Lang::De, true) => format!("In {folder} ersetzen"),
+    }
+}
+
+pub fn already_installed(l: Lang, version: &str, path: &str) -> String {
+    let v = if version.is_empty() { String::new() } else { format!(" ({version})") };
     match l {
-        Lang::En => format!("Copied to the Applications folder{path}"),
-        Lang::De => format!("In den Programme-Ordner kopiert{path}"),
+        Lang::En => format!("A version{v} is already installed: {path}. Copying replaces it."),
+        Lang::De => format!("Es ist schon eine Version{v} installiert: {path}. Beim Kopieren wird sie ersetzt."),
+    }
+}
+
+pub fn copied_to(l: Lang, folder: &str) -> String {
+    match l {
+        Lang::En => format!("Copied to {folder}"),
+        Lang::De => format!("Nach {folder} kopiert"),
     }
 }
 
