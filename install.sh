@@ -28,6 +28,10 @@
 #   CRAFT_GIT_BASE    where the repositories are cloned from (default https://github.com/storytold)
 #   CRAFT_NO_UPDATE   set to 1 to skip the git pull of this script's own repository (offline use)
 #   CRAFT_APPLICATIONS_DIR  where --copy puts the app (default /Applications)
+#   CRAFT_DMG         set to 1 to also build the disk image (.dmg); by default the build stops once the app is
+#                     finished (assembled and signed), which is faster
+#   CRAFT_SKIP_CLI    set to 1 to leave out the command-line tool of an app, where the app's script allows it
+#                     (faster; works together with CRAFT_DMG=1)
 #   CRAFT_INSTALL_DIR       an extra folder: installed apps are looked for here first, and an app that is
 #                           not installed yet is copied here instead of /Applications
 #
@@ -451,6 +455,45 @@ action_clean() { # action_clean <app>
 }
 
 # ---- build ---------------------------------------------------------------------------------------
+# Makes the build shorter, with two independent options. By default the build script stops once the
+# .app is assembled and signed: no disk image (some apps need a newer Python for it). CRAFT_DMG=1
+# builds the disk image. CRAFT_SKIP_CLI=1 leaves out the command-line tool, a second program the same
+# script compiles, but only where it can be done safely. Every change is made only when the script
+# looks as expected; otherwise it stays as it is.
+trim_package_script() { # trim_package_script <package.sh>
+  local f="$1" tmp="$1.craft-trim" marker what
+  if [ "${CRAFT_DMG:-0}" != 1 ]; then
+    marker='^# ---- DMG ---'; what="the disk image (CRAFT_DMG=1 builds it)"
+  elif [ "${CRAFT_SKIP_CLI:-0}" = 1 ]; then
+    marker='^# ---- CLI ---'; what="the command-line tool step"
+  else
+    return 0
+  fi
+  if ! grep -q "$marker" "$f"; then
+    if [ "${CRAFT_DMG:-0}" != 1 ]; then warn "package.sh has no separate disk image step; building everything it builds."
+    else warn "package.sh has no separate command-line tool step; it is built too."; fi
+    return 0
+  fi
+  awk -v m="$marker" -v w="$what" '$0 ~ m && !done { print "echo \"==> skipping " w "\""; print "echo \"==> done\""; print "exit 0"; done=1 } { print }' "$f" > "$tmp" && cat "$tmp" > "$f" && rm -f "$tmp"
+  if [ "${CRAFT_DMG:-0}" != 1 ]; then say "Skipping the disk image (CRAFT_DMG=1 builds it)"; fi
+  if [ "${CRAFT_SKIP_CLI:-0}" != 1 ]; then return 0; fi
+  # The command-line tool: leave it out of the cargo build and of the list of programs to join.
+  if grep -Eq ' -p [A-Za-z0-9_-]+-cli' "$f" && grep -Eq '^ *for bin in .* [A-Za-z0-9_-]+-cli; do' "$f"; then
+    sed -E -e 's/ -p [A-Za-z0-9_-]+-cli//' -e 's/^( *for bin in .*) [A-Za-z0-9_-]+-cli; do/\1; do/' "$f" > "$tmp"
+    # Accept it only when nothing before the new end of the script uses the tool any more.
+    if ! grep -Eq ' -p [A-Za-z0-9_-]+-cli' "$tmp" && ! grep -Eq ' [A-Za-z0-9_-]+-cli; do' "$tmp" \
+       && ! awk '/^exit 0$/ { exit } { print }' "$tmp" | grep -Eq '/[A-Za-z0-9_-]+-cli["[:space:]]'; then
+      cat "$tmp" > "$f"
+      say "Leaving out the command-line tool"
+    else
+      warn "The command-line tool cannot be left out of this app's build; it is built too."
+    fi
+    rm -f "$tmp"
+  else
+    warn "The command-line tool cannot be left out of this app's build; it is built too."
+  fi
+}
+
 do_build() {
   if [ "$(uname -m)" != "x86_64" ]; then
     warn "This Mac is not an Intel Mac. The apps already run on Apple silicon with macOS 11 or newer."
@@ -570,6 +613,8 @@ do_build() {
       cargo install resvg --locked || die "Installing resvg failed (see above)."
     fi
   fi
+
+  trim_package_script packaging/macos/package.sh
 
   say "Building (the first build of an app takes a long time; warnings are normal)"
   # "bash" in front: some apps (MailCraft) have the script without the executable flag in git.

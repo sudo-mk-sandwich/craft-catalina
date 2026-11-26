@@ -63,7 +63,7 @@ pub fn spawn(
     kind: TaskKind,
     args: &[&str],
     keep_awake: bool,
-    install_dir: Option<String>,
+    env: Vec<(&'static str, Option<String>)>,
     tx: Sender<Event>,
     repaint: impl Fn() + Send + Clone + 'static,
 ) -> PidHandle {
@@ -73,10 +73,14 @@ pub fn spawn(
     std::thread::spawn(move || {
         let mut cmd = Command::new("/bin/bash");
         cmd.arg(&script).args(&args);
-        match &install_dir {
-            Some(d) => cmd.env("CRAFT_INSTALL_DIR", d),
-            None => cmd.env_remove("CRAFT_INSTALL_DIR"),
-        };
+        // Some(value) sets a variable for the script, None removes it (an own copy of the
+        // variable in Craftalina's environment must not leak into the build).
+        for (name, value) in &env {
+            match value {
+                Some(v) => cmd.env(name, v),
+                None => cmd.env_remove(name),
+            };
+        }
         let child = cmd
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

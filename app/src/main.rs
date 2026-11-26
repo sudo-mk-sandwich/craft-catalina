@@ -315,10 +315,20 @@ impl Builder {
         self.start_awake(kind, args, false)
     }
 
+    /// What the script is told through the environment: where the apps live and how to build.
+    fn child_env(&self) -> Vec<(&'static str, Option<String>)> {
+        let flag = |on: bool| Some(if on { "1" } else { "0" }.to_string());
+        vec![
+            ("CRAFT_INSTALL_DIR", self.install_dir()),
+            ("CRAFT_DMG", flag(self.settings.dmg)),
+            ("CRAFT_SKIP_CLI", flag(self.settings.skip_cli)),
+        ]
+    }
+
     fn start_awake(&self, kind: TaskKind, args: &[&str], keep_awake: bool) -> Option<PidHandle> {
         let script = self.script.as_ref()?;
         let ctx = self.ctx.clone();
-        Some(backend::spawn(script.clone(), kind, args, keep_awake, self.install_dir(), self.tx.clone(), move || {
+        Some(backend::spawn(script.clone(), kind, args, keep_awake, self.child_env(), self.tx.clone(), move || {
             ctx.request_repaint()
         }))
     }
@@ -980,6 +990,18 @@ impl eframe::App for Builder {
         if self.script.is_some() {
             egui::Panel::bottom("bottom").show(root, |ui| {
                 ui.add_space(6.0);
+                if matches!(self.screen, Screen::Select) {
+                    let mut opts = self.settings.clone();
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut opts.dmg, t(l, K::OptDmg));
+                        ui.checkbox(&mut opts.skip_cli, t(l, K::OptSkipCli));
+                    });
+                    if opts != self.settings {
+                        self.settings = opts;
+                        settings::save(&self.settings);
+                    }
+                    ui.add_space(4.0);
+                }
                 ui.horizontal(|ui| match self.screen {
                     Screen::Select => {
                         let ready = self.selected.is_some()

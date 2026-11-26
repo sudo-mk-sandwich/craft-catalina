@@ -15,12 +15,16 @@ pub struct Settings {
     pub location: Location,
     /// The folder of the "Custom" choice (kept even while another choice is active).
     pub custom: String,
+    /// Also build the disk image (.dmg). Off: faster, and the app is all that is needed.
+    pub dmg: bool,
+    /// Leave out the command-line tool where the app's build allows it (faster).
+    pub skip_cli: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         // Always start with Applications, wherever Craftalina itself was unpacked.
-        Settings { location: Location::Applications, custom: String::new() }
+        Settings { location: Location::Applications, custom: String::new(), dmg: false, skip_cli: true }
     }
 }
 
@@ -38,6 +42,8 @@ impl Settings {
                     }
                 }
                 "custom" => s.custom = v.trim().to_string(),
+                "dmg" => s.dmg = v.trim() == "1",
+                "skip_cli" => s.skip_cli = v.trim() != "0",
                 _ => {}
             }
         }
@@ -53,7 +59,12 @@ impl Settings {
             Location::NextToApp => "next",
             Location::Custom => "custom",
         };
-        format!("location={loc}\ncustom={}\n", self.custom)
+        format!(
+            "location={loc}\ncustom={}\ndmg={}\nskip_cli={}\n",
+            self.custom,
+            u8::from(self.dmg),
+            u8::from(self.skip_cli)
+        )
     }
 
     /// The folder for CRAFT_INSTALL_DIR, or None for the standard Applications folder.
@@ -155,11 +166,23 @@ mod tests {
     }
 
     #[test]
+    fn build_options_default_and_old_files() {
+        // Faster by default: no disk image, no command-line tool. A settings file from an older
+        // Craftalina has neither key and gets the same defaults.
+        let d = Settings::default();
+        assert!(!d.dmg && d.skip_cli);
+        let old = Settings::parse("location=next\ncustom=/x\n");
+        assert!(!old.dmg && old.skip_cli);
+        assert!(Settings::parse("dmg=1\nskip_cli=0\n").dmg);
+        assert!(!Settings::parse("dmg=1\nskip_cli=0\n").skip_cli);
+    }
+
+    #[test]
     fn roundtrip() {
         for s in [
-            Settings { location: Location::Applications, custom: String::new() },
-            Settings { location: Location::NextToApp, custom: "/x/y".into() },
-            Settings { location: Location::Custom, custom: "/Users/a b/ArtCraft".into() },
+            Settings { location: Location::Applications, custom: String::new(), dmg: false, skip_cli: true },
+            Settings { location: Location::NextToApp, custom: "/x/y".into(), dmg: true, skip_cli: false },
+            Settings { location: Location::Custom, custom: "/Users/a b/ArtCraft".into(), dmg: false, skip_cli: false },
         ] {
             assert_eq!(Settings::parse(&s.serialize()), s);
         }
@@ -170,7 +193,7 @@ mod tests {
     #[test]
     fn install_dir_choice() {
         let next = PathBuf::from("/Users/a/ArtCraft");
-        let s = |location| Settings { location, custom: "/c".into() };
+        let s = |location| Settings { location, custom: "/c".into(), ..Settings::default() };
         assert_eq!(s(Location::Applications).install_dir(Some(&next)), None);
         assert_eq!(s(Location::NextToApp).install_dir(Some(&next)), Some("/Users/a/ArtCraft".into()));
         assert_eq!(s(Location::NextToApp).install_dir(None), None);
