@@ -65,6 +65,8 @@ bash install.sh wordcraft                        # skip the menu
 CRAFT_REF=v0.5.0 bash install.sh wordcraft       # a specific tag or branch
 CRAFT_BUILD_DIR=/Volumes/Big/craft bash install.sh   # build somewhere else
 CRAFT_NO_UPDATE=1 bash install.sh                # skip the git pull (offline)
+CRAFT_DMG=1 bash install.sh                      # also build the disk image
+CRAFT_SKIP_CLI=1 bash install.sh                 # faster: leave out the command-line tool, where possible
 CRAFT_INSTALL_DIR=~/ArtCraft bash install.sh       # look for and put apps in this folder (Craftalina's choice)
 ```
 
@@ -92,6 +94,12 @@ Developers can also start Craftalina from the source (needs Rust, see "Build by 
    `packaging/macos/Info.plist.in`.
 2. **App-specific patches** in `patches/` where an app needs more (see the table). They apply to
    every new version; if an upstream change breaks one, the build stops with a clear message.
+3. **A shorter build:** the build stops once the app is finished. The disk image (`.dmg`) is not
+   built by default, because you do not need it to use the app (`CRAFT_DMG=1` builds it). Optionally,
+   the separate command-line tool can be left out too (`CRAFT_SKIP_CLI=1`), which saves a lot of time. The two options are independent of each other.
+   This only happens where the app's build script allows it; otherwise it is built as usual. In
+   Craftalina these are the two checkboxes below the app list ("Also build the disk image" is off,
+   "Faster build: leave out the command-line tool, if possible" is on).
 
 ## Status
 
@@ -167,10 +175,10 @@ not that it runs on Catalina; test the result on a real Catalina Mac.
   (`git checkout -- <file>`) and run the script again.
 - **`Undefined symbols ...` while linking:** the app calls a system function Catalina does not
   have. That needs a patch for this app; please open an issue with the last 30 lines of the output.
-- **The app is built, but "creating the disk image" fails** (for example SolidCraft: `Could not find
-  a version that satisfies the requirement dmgbuild`): the disk image needs a newer Python than
-  Catalina has. The script treats this as success: the app is in the folder that opens, the disk
-  image is not needed.
+- **The app is built, but "creating the disk image" fails** (only with `CRAFT_DMG=1`; for example
+  SolidCraft: `Could not find a version that satisfies the requirement dmgbuild`): the disk image
+  needs a newer Python than Catalina has. The script treats this as success: the app is in the folder
+  that opens, the disk image is not needed. By default the disk image is not built at all.
 - **`ld: framework not found ...`:** the app links a framework that Catalina does not have. Please
   open an issue (Craft Anything solves this with a placeholder, see `patches/`).
 - **`patches/<app>.patch does not apply`:** the app changed the code the patch touches. Please open
